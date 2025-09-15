@@ -1,0 +1,58 @@
+TAWSCamDetect Project Statement 
+Project Overview
+TAWSCamDetect is a real-time object detection system based on computer vision technology. This system integrates the YOLOv3-tiny deep learning model and is capable of capturing video streams from cameras in real time and performing efficient object detection, classification, and distance estimation. The system design emphasizes practicality and ease of use, supports Chinese display, and provides a friendly user interface. 
+Project Features
+1. Intelligent Object Detection: Utilizes the YOLOv3-tiny model to real-time identify 80 common objects (based on the COCO dataset), including humans, vehicles, household items, etc.
+2. Camera Selection: Offers a graphical interface for selecting available camera devices and displays device information.
+3. Real-time Video Processing: Efficiently processes video streams while optimizing performance while maintaining detection accuracy.
+4. Visualization of Detection Results: Marks the detected objects on the video, displaying the category, confidence level, and estimated distance.
+5. Support for Chinese Characters: Achieves correct display of Chinese labels through the PIL library, ensuring a good user experience.
+6. Simple Installation and Uninstallation: Provides convenient installation and uninstallation scripts to simplify the user's operation process. 
+Technical Architecture
+Core Framework: OpenCV (Computer Vision Processing)
+Deep Learning Model: YOLOv3-tiny (Object Detection)
+Image Rendering: PIL (Supports Chinese Fonts)
+Interface Interaction: OpenCV Window System
+Scripting Language: Python 3.x (Recommended version 3.13.5, other versions may cause dependency issues) 
+
+Instruction Manual
+Make sure that the necessary dependent libraries have been installed: cv2
+os
+urllib.request
+shutil
+numpy as np
+sys
+traceback
+ctypes
+cv2
+numpy as np
+sys
+os
+shutil
+webbrowser
+
+2. Run the main program: TAWSCamDetect.lnk or TAWSCamDetect.exe
+3. Select the appropriate camera in the camera selection interface
+4. The program will automatically start the target detection. Press 'q' key or close the window to exit the detection. 
+5. If you need to install or uninstall the relevant components, run:, and follow the prompts to proceed. 
+Notes for Attention
+1. During the first run, the program will automatically download the required model files and configuration files. Please ensure that the network connection is normal.
+2. The weight files are relatively large (about 34MB), and the download process may take some time. Please be patient.
+3. If the download fails, please manually download the relevant files according to the program's prompts.
+4. To achieve the best performance, please use a computer with a higher configuration or adjust the detection parameters. 
+Author Information
+Author: Windows_123_fish Studio
+Email: xhoddh@outlook.com
+Project Homepage: https://github.com/windows123fish/TAWSCamDetect
+Update Date: August 15, 2025 
+Copyright Notice
+This project is provided solely for learning and research purposes. It is prohibited to use it for commercial purposes without authorization. The project code and model weights are protected by relevant open-source licenses. If you want to copy or modify them, please cite the source.
+This project has been open-sourced on GitHub. The address is: https://github.com/windows123fish/TAWSCamDetect 
+
+Contact Information
+If you have any questions, suggestions or cooperation intentions, please contact us through the following methods:
+Email: xhoddh@outlook.com
+Bilibili: https://space.bilibili.com/3493134080149590 
+We welcome any form of feedback and contributions to jointly improve the TAWSCamDetect system.
+Date of Statement: August 17, 2025
+Version of Statement: 1.0

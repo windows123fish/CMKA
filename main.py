@@ -12,7 +12,7 @@ try:
     import pkg_resources.py2_warn
 except ImportError:
     pass
-# 移除未使用的tempfile引用
+
 
 # 尝试导入PIL库
 try:
@@ -88,7 +88,7 @@ def download_file(url, filename, fallback_urls=None, min_expected_size=0):
         
         # 验证文件是否实际创建且大小符合预期
         if not os.path.exists(filename):
-            print(f"警告: 文件下载成功但未找到 {filename}")
+            print(f"警告: 文件下载成功但未找到 {filename}!")
             return False
         
         file_size = os.path.getsize(filename)
@@ -126,7 +126,7 @@ if not os.path.exists(yolo_config):
 # 检查并下载权重文件
 # 检查权重文件是否存在，如不存在则引导手动下载
 if not os.path.exists(yolo_weights):
-    print("=============================================")
+    print("==============================================")
     print("权重文件下载失败: 所有自动下载链接均不可用")
     print("请手动下载权重文件并放置到项目目录:")
     print("1. 访问: https://pjreddie.com/media/files/yolov3-tiny.weights")
@@ -223,6 +223,7 @@ def show_free_software_notice():
         frame = put_chinese_text(frame, "本软件为免费软件", (120, 120), font_size=20, color=text_color)
         frame = put_chinese_text(frame, "如果您是购买的", (120, 160), font_size=20, color=text_color)
         frame = put_chinese_text(frame, "请尽快联系退款与举报", (120, 200), font_size=20, color=text_color)
+        frame = put_chinese_text(frame, "开源地址：https://github.com/windows123fish/TAWSCamDetect", (120, 240), font_size=15, color=text_color)
         
         # 绘制提示文字
         hint_color = (148, 163, 252)

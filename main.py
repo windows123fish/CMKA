@@ -6,15 +6,15 @@ import numpy as np
 import sys
 import traceback
 import ctypes
-import webbrowser  # 添加webbrowser模块用于打开超链接
-# 导入pkg_resources.py2_warn以解决PyInstaller打包问题
+import webbrowser
+import pyperclip
+from rich.progress import Progress, SpinnerColumn, TextColumn, BarColumn, TaskProgressColumn, TimeRemainingColumn
+
 try:
     import pkg_resources.py2_warn
 except ImportError:
     pass
 
-
-# 尝试导入PIL库
 try:
     from PIL import Image, ImageDraw, ImageFont
     pil_available = True
@@ -23,93 +23,121 @@ except ImportError:
     pil_available = False
     sys.exit(1)
 
-# 使用PIL绘制中文的函数
+
 def put_chinese_text(img, text, position, font_size=20, color=(0, 0, 0)):
     if not pil_available:
-        # 如果PIL不可用，使用OpenCV默认绘制（可能无法显示中文）
         cv2.putText(img, text, position, cv2.FONT_HERSHEY_SIMPLEX, font_size/20, color, 2)
         return img
     
-    # 转换OpenCV图像到PIL格式
     img_pil = Image.fromarray(cv2.cvtColor(img, cv2.COLOR_BGR2RGB))
     draw = ImageDraw.Draw(img_pil)
-    
-    # 尝试加载中文字体
+
     font_path = None
-    # 尝试Windows系统字体
     if os.name == 'nt':
         possible_fonts = [
-            r'C:\Windows\Fonts\simhei.ttf',  # 黑体 (使用原始字符串避免转义问题)
-            r'C:\Windows\Fonts\simsun.ttc',  # 宋体
-            r'C:\Windows\Fonts\microsoftyahei.ttf',  # 微软雅黑
+            r'C:\Windows\Fonts\simhei.ttf',
+            r'C:\Windows\Fonts\simsun.ttc',
+            r'C:\Windows\Fonts\microsoftyahei.ttf',
         ]
         for font in possible_fonts:
             if os.path.exists(font):
                 font_path = font
                 break
     
-    # 如果找不到系统字体，使用默认字体
     try:
         if font_path:
             font = ImageFont.truetype(font_path, font_size)
         else:
             font = ImageFont.load_default()
-    except:
-        font = ImageFont.load_default()
+        draw.text(position, text, font=font, fill=(color[2], color[1], color[0]))
+        img = cv2.cvtColor(np.array(img_pil), cv2.COLOR_RGB2BGR)
+    except Exception as e:
+        print(f"PIL绘制失败，使用OpenCV: {e}")
+        cv2.putText(img, text, position, cv2.FONT_HERSHEY_SIMPLEX, font_size/20, color, 2)
     
-    # 绘制文本
-    draw.text(position, text, font=font, fill=color)
-    
-    # 转换回OpenCV格式
-    return cv2.cvtColor(np.array(img_pil), cv2.COLOR_RGB2BGR)
+    return img
 
-# YOLOv3-tiny模型配置和权重文件路径
+
+def draw_rounded_rectangle(img, pt1, pt2, color, thickness=-1, radius=20):
+    x1, y1 = pt1
+    x2, y2 = pt2
+    
+    cv2.rectangle(img, (x1 + radius, y1), (x2 - radius, y2), color, thickness)
+    cv2.rectangle(img, (x1, y1 + radius), (x2, y2 - radius), color, thickness)
+    
+    cv2.circle(img, (x1 + radius, y1 + radius), radius, color, thickness)
+    cv2.circle(img, (x2 - radius, y1 + radius), radius, color, thickness)
+    cv2.circle(img, (x1 + radius, y2 - radius), radius, color, thickness)
+    cv2.circle(img, (x2 - radius, y2 - radius), radius, color, thickness)
+    
+    return img
+
+
 yolo_config = 'yolov3-tiny.cfg'
 yolo_weights = 'yolov3-tiny.weights'
 classes_file = 'coco.names'
 
-# 下载函数（添加用户代理头）
+
 def download_file(url, filename, fallback_urls=None, min_expected_size=0):
     headers = {'User-Agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/58.0.3029.110 Safari/537.3'}
-    req = urllib.请求.Request(url, headers=headers)
+    req = urllib.request.Request(url, headers=headers)
     try:
-        with urllib.请求.urlopen(req) as response:
-            # 检查Content-Length是否符合预期
+        with urllib.request.urlopen(req) as response:
             content_length = response.getheader('Content-Length')
             if content_length and min_expected_size > 0:
                 if int(content_length) < min_expected_size:
                     print(f"文件大小不符合预期 {url}: {content_length}字节 < {min_expected_size}字节")
                     return False
             
-            with open(filename, 'wb') as out_file:
-                shutil.copyfileobj(response, out_file)
+            total_size = int(content_length) if content_length else 0
+            downloaded = 0
+            chunk_size = 8192
             
-        print(f"下载成功: {filename}")
-        
-        # 验证文件是否实际创建且大小符合预期
-        if not os.path.exists(filename):
-            print(f"警告: 文件下载成功但未找到 {filename}!")
-            return False
-        
-        file_size = os.path.getsize(filename)
-        if min_expected_size > 0 and file_size < min_expected_size:
-            print(f"文件大小不符合预期 {filename}: {file_size}字节 < {min_expected_size}字节")
-            os.remove(filename)
-            return False
-        
-        return True
+            with Progress(
+                SpinnerColumn(),
+                TextColumn("[progress.description]{task.percentage:>3.0f}"),
+                BarColumn(),
+                TaskProgressColumn(),
+                TimeRemainingColumn(),
+                expand=True,
+            ) as progress:
+                task = progress.add_task(f"[cyan]正在下载: {filename}", total=total_size)
+                
+                with open(filename, 'wb') as out_file:
+                    while True:
+                        chunk = response.read(chunk_size)
+                        if not chunk:
+                            break
+                        
+                        out_file.write(chunk)
+                        chunk_size_bytes = len(chunk)
+                        downloaded += chunk_size_bytes
+                        progress.update(task, advance=chunk_size_bytes)
+            
+            print(f"下载成功: {filename}")
+            
+            if not os.path.exists(filename):
+                print(f"警告: 文件下载成功但未找到 {filename}!")
+                return False
+            
+            file_size = os.path.getsize(filename)
+            if min_expected_size > 0 and file_size < min_expected_size:
+                print(f"文件大小不符合预期 {filename}: {file_size}字节 < {min_expected_size}字节")
+                os.remove(filename)
+                return False
+            
+            return True
     except (urllib.error.HTTPError, OSError) as e:
-        print(f"下载或文件写入失败 {url}: {str(e)}")
+        print(f"\n下载或文件写入失败 {url}: {str(e)}")
         if fallback_urls and len(fallback_urls) > 0:
             next_url = fallback_urls.pop(0)
             print(f"尝试备用链接: {next_url}")
             return download_file(next_url, filename, fallback_urls, min_expected_size)
         return False
 
-# 检查并下载模型文件
+
 if not os.path.exists(yolo_config):
     print(f"正在下载{yolo_config}...")
-    # 配置文件多URL fallback机制
     config_success = download_file(
         'https://raw.githubusercontent.com/pjreddie/darknet/master/cfg/yolov3-tiny.cfg',
         yolo_config,
@@ -123,8 +151,6 @@ if not os.path.exists(yolo_config):
         print("推荐下载地址: https://raw.githubusercontent.com/pjreddie/darknet/master/cfg/yolov3-tiny.cfg")
         sys.exit(1)
 
-# 检查并下载权重文件
-# 检查权重文件是否存在，如不存在则引导手动下载
 if not os.path.exists(yolo_weights):
     print("==============================================")
     print("权重文件下载失败: 所有自动下载链接均不可用")
@@ -132,32 +158,30 @@ if not os.path.exists(yolo_weights):
     print("1. 访问: https://pjreddie.com/media/files/yolov3-tiny.weights")
     print("2. 将文件保存为: yolov3-tiny.weights")
     print("3. 确保文件大小约为34MB")
-    print("=============================================")
-    print("所有下载链接均失败，请手动下载权重文件并放置到项目目录")  # 移除潜在 unreachable 代码问题，需确保代码上下文逻辑正确以避免该提示
+    print("===============================================")
+    print("所有下载链接均失败，请手动下载权重文件并放置到项目目录")
     print("推荐下载地址1: https://pjreddie.com/media/files/yolov3-tiny.weights")
     print("推荐下载地址2: https://github.com/ultralytics/yolov5/releases/download/v6.0/yolov3-tiny.pt")
     print("下载后请重命名为'yolov3-tiny.weights'并放在当前目录")
     sys.exit(1)
 
-# 验证文件是否存在
 if not os.path.exists(yolo_weights):
     print(f"下载错误: {yolo_weights}文件不存在")
     sys.exit(1)
 
-# 验证文件完整性并处理潜在的文件删除竞态条件
 try:
     weights_size = os.path.getsize(yolo_weights)
 except FileNotFoundError:
     print(f"致命错误: {yolo_weights}文件在验证过程中丢失")
     sys.exit(1)
 
-if weights_size < 1*1024*1024:  # 降低至1MB阈值
+if weights_size < 1*1024*1024:
     print(f"权重文件{yolo_weights}损坏或不完整 (大小: {weights_size}字节)")
     print("请尝试手动下载: https://pjreddie.com/media/files/yolov3-tiny.weights")
     os.remove(yolo_weights)
     sys.exit(1)
 
-if os.path.getsize(yolo_config) < 1024:  # 小于1KB视为配置文件异常
+if os.path.getsize(yolo_config) < 1024:
     print(f"配置文件{yolo_config}损坏或不完整")
     os.remove(yolo_config)
     sys.exit(1)
@@ -182,8 +206,6 @@ if not os.path.exists(classes_file):
         with open(classes_file, 'w') as f:
             f.write('\n'.join(coco_classes))
 
-# 加载YOLO模型
-# 加载模型并添加错误处理
 try:
     net = cv2.dnn.readNetFromDarknet(yolo_config, yolo_weights)
 except cv2.error as e:
@@ -192,73 +214,216 @@ except cv2.error as e:
     print("可能原因: 权重文件与配置文件不匹配或OpenCV版本不兼容")
     sys.exit(1)
 
-# 设置OpenCV DNN后端优化和多线程
 net.setPreferableBackend(cv2.dnn.DNN_BACKEND_OPENCV)
 net.setPreferableTarget(cv2.dnn.DNN_TARGET_CPU)
-cv2.setNumThreads(4)  # 减少线程数以降低资源占用
+cv2.setNumThreads(4)
 
-# 免费软件声明画面
-def show_free_software_notice():
-    cv2.namedWindow('软件声明', cv2.WINDOW_NORMAL)
-    cv2.resizeWindow('软件声明', 600, 400)
+
+def verify_trial_code():
+    cv2.namedWindow('使用码验证', cv2.WINDOW_NORMAL)
+    cv2.resizeWindow('使用码验证', 500, 450)
     
-    clicked = False
+    correct_code = "Windows123fish"
+    max_attempts = 5
+    attempts = 0
+    user_input = ""
+    show_error = False
+    cursor_visible = True
+    cursor_blink_timer = 0
+    
+    button_clicked = False
     
     def on_mouse_click(event, x, y, flags, param):
-        nonlocal clicked
+        nonlocal button_clicked
         if event == cv2.EVENT_LBUTTONDOWN:
-            clicked = True
+            if 410 <= x <= 470 and 230 <= y <= 280:
+                button_clicked = True
     
-    cv2.setMouseCallback('软件声明', on_mouse_click)
+    cv2.setMouseCallback('使用码验证', on_mouse_click)
     
-    while True:
-        frame = np.zeros((400, 600, 3), dtype=np.uint8)
+    while attempts < max_attempts:
+        frame = np.zeros((450, 500, 3), dtype=np.uint8)
         
-        # 绘制标题
-        title_color = (148, 163, 252)
-        frame = put_chinese_text(frame, "软件声明", (250, 50), font_size=32, color=title_color)
+        draw_rounded_rectangle(frame, (0, 0), (500, 80), (255, 182, 193), radius=15)
+        draw_rounded_rectangle(frame, (0, 80), (500, 450), (255, 255, 255), radius=15)
         
-        # 绘制主要内容
-        text_color = (200, 200, 200)
-        frame = put_chinese_text(frame, "本软件为免费软件", (120, 120), font_size=20, color=text_color)
-        frame = put_chinese_text(frame, "如果您是购买的", (120, 160), font_size=20, color=text_color)
-        frame = put_chinese_text(frame, "请尽快联系退款与举报", (120, 200), font_size=20, color=text_color)
-        frame = put_chinese_text(frame, "开源地址：https://github.com/windows123fish/TAWSCamDetect", (120, 240), font_size=15, color=text_color)
+        frame = put_chinese_text(frame, "使用码验证", (30, 25), font_size=24, color=(255, 255, 255))
         
-        # 绘制提示文字
-        hint_color = (148, 163, 252)
-        frame = put_chinese_text(frame, "点击任意处继续", (220, 320), font_size=16, color=hint_color)
+        cv2.circle(frame, (460, 30), 20, (255, 192, 203), -1)
+        frame = put_chinese_text(frame, "×", (452, 15), font_size=24, color=(255, 255, 255))
         
-        # 绘制边框
-        cv2.rectangle(frame, (20, 20), (580, 380), (148, 163, 252), 2)
+        draw_rounded_rectangle(frame, (40, 100), (460, 170), (224, 255, 255), radius=10)
+        cv2.rectangle(frame, (40, 100), (460, 170), (176, 224, 230), 2)
         
-        cv2.imshow('软件声明', frame)
+        frame = put_chinese_text(frame, "重要提示：本软件为免费软件，如果您是购买的，请", (50, 120), font_size=14, color=(0, 102, 204))
+        frame = put_chinese_text(frame, "尽快联系退款与举报！", (50, 145), font_size=14, color=(0, 102, 204))
+        
+        frame = put_chinese_text(frame, "请输入使用码以继续使用本软件:", (30, 200), font_size=16, color=(64, 64, 64))
+        
+        draw_rounded_rectangle(frame, (50, 230), (400, 280), (255, 182, 193), radius=10)
+        cv2.rectangle(frame, (50, 230), (400, 280), (255, 240, 245), -1)
+        
+        masked_input = "*" * len(user_input)
+        frame = put_chinese_text(frame, masked_input if masked_input else "请输入使用码", (60, 255), font_size=16, color=(128, 128, 128))
+        
+        cursor_blink_timer += 1
+        if cursor_visible and cursor_blink_timer % 20 < 10:
+            cursor_x = 60 + len(user_input) * 12
+            cv2.line(frame, (cursor_x, 255), (cursor_x, 275), (0, 0, 0), 2)
+        
+        draw_rounded_rectangle(frame, (410, 230), (470, 280), (255, 105, 180), radius=10)
+        cv2.rectangle(frame, (410, 230), (470, 280), (255, 69, 0), 2)
+        frame = put_chinese_text(frame, "验证", (425, 255), font_size=14, color=(255, 255, 255))
+        
+        if show_error:
+            frame = put_chinese_text(frame, "使用码错误，请重试", (180, 310), font_size=14, color=(255, 0, 0))
+            frame = put_chinese_text(frame, f"剩余尝试次数：{max_attempts - attempts}", (180, 335), font_size=12, color=(255, 0, 0))
+        
+        frame = put_chinese_text(frame, "请使用enter(回车)键确认", (30, 380), font_size=14, color=(147, 112, 219))
+        frame = put_chinese_text(frame, "使用码：Windows123fish", (30, 410), font_size=14, color=(147, 112, 219))
+        cv2.imshow('使用码验证', frame)
         
         key = cv2.waitKey(25) & 0xFF
-        if clicked or key == ord('q') or key == 13 or cv2.getWindowProperty('软件声明', cv2.WND_PROP_VISIBLE) < 1:
-            break
+        
+        if key == 13:
+            if user_input == correct_code:
+                success_frame = np.zeros((450, 500, 3), dtype=np.uint8)
+                cv2.rectangle(success_frame, (0, 0), (500, 80), (255, 182, 193), -1)
+                cv2.rectangle(success_frame, (0, 80), (500, 450), (255, 255, 255), -1)
+                frame = put_chinese_text(success_frame, "使用码验证", (30, 25), font_size=24, color=(255, 255, 255))
+                success_color = (0, 255, 0)
+                success_frame = put_chinese_text(success_frame, "验证成功！", (175, 200), font_size=32, color=success_color)
+                success_frame = put_chinese_text(success_frame, "欢迎使用本软件", (175, 250), font_size=20, color=(64, 64, 64))
+                cv2.imshow('使用码验证', success_frame)
+                cv2.waitKey(2000)
+                cv2.destroyAllWindows()
+                return True
+            else:
+                attempts += 1
+                show_error = True
+                user_input = ""
+                button_clicked = False
+                if attempts >= max_attempts:
+                    fail_frame = np.zeros((450, 500, 3), dtype=np.uint8)
+                    cv2.rectangle(fail_frame, (0, 0), (500, 80), (255, 182, 193), -1)
+                    cv2.rectangle(fail_frame, (0, 80), (500, 450), (255, 255, 255), -1)
+                    frame = put_chinese_text(fail_frame, "使用码验证", (30, 25), font_size=24, color=(255, 255, 255))
+                    fail_color = (255, 0, 0)
+                    fail_frame = put_chinese_text(fail_frame, "验证失败", (200, 200), font_size=32, color=fail_color)
+                    fail_frame = put_chinese_text(fail_frame, "尝试次数已用完", (170, 260), font_size=20, color=(64, 64, 64))
+                    cv2.imshow('使用码验证', fail_frame)
+                    cv2.waitKey(3000)
+                    cv2.destroyAllWindows()
+                    return False
+        elif key == 8:
+            user_input = user_input[:-1]
+            show_error = False
+        elif key == 22:
+            try:
+                pasted_text = pyperclip.paste()
+                user_input += pasted_text.replace('\n', '').replace('\r', '')
+                show_error = False
+            except:
+                pass
+        elif key == 27:
+            cv2.destroyAllWindows()
+            return False
+        elif 32 <= key <= 126:
+            user_input += chr(key)
+            show_error = False
+        elif key == ord('q') or cv2.getWindowProperty('使用码验证', cv2.WND_PROP_VISIBLE) < 1:
+            cv2.destroyAllWindows()
+            return False
     
     cv2.destroyAllWindows()
-
-# 显示软件声明
-show_free_software_notice()
+    return False
 
 
-# 加载类别名称
+if not verify_trial_code():
+    print("验证失败，程序退出")
+    sys.exit(1)
+
+print("验证成功，欢迎使用！")
+
+
 with open(classes_file, 'r') as f:
     classes = [line.strip() for line in f.readlines()]
 
-# 获取输出层名称（兼容不同OpenCV版本）
 layer_names = net.getLayerNames()
 try:
     output_layers = [layer_names[i - 1] for i in net.getUnconnectedOutLayers()]
 except TypeError:
     output_layers = [layer_names[i[0] - 1] for i in net.getUnconnectedOutLayers()]
 
-# 摄像头选择GUI函数
+
+def get_camera_name_windows():
+    camera_names = []
+    
+    try:
+        import win32com.client
+        import pythoncom
+        
+        pythoncom.CoInitialize()
+        devicelist = win32com.client.Dispatch("WIA.DeviceManager").DeviceInfos
+        
+        for device_info in devicelist:
+            if device_info.Type == 3:  # VideoDeviceType
+                camera_names.append(device_info.Properties("Name").Value)
+        
+        pythoncom.CoUninitialize()
+        
+        if camera_names:
+            return camera_names
+    except:
+        pass
+    
+    try:
+        import dshowcapture
+        cameras = dshowcapture.get_video_devices()
+        camera_names = [camera.name for camera in cameras]
+        
+        if camera_names:
+            return camera_names
+    except:
+        pass
+    
+    try:
+        import pywintypes
+        import win32com.client as win32
+        
+        wmi = win32.Dispatch("WbemScripting.SWbemLocator")
+        service = wmi.ConnectServer(".", "root\\cimv2")
+        devices = service.ExecQuery("SELECT * FROM Win32_PnPEntity WHERE Name LIKE '%Camera%' OR Name LIKE '%Webcam%' OR Name LIKE '%Video%'")
+        
+        camera_names = []
+        for device in devices:
+            if device.Name:
+                camera_names.append(device.Name)
+        
+        if camera_names:
+            return camera_names
+    except:
+        pass
+    
+    try:
+        import subprocess
+        result = subprocess.run(['powershell', '-Command', 'Get-PnpDevice -Class Camera | Select-Object FriendlyName'], capture_output=True, text=True)
+        if result.returncode == 0:
+            lines = result.stdout.split('\n')
+            camera_names = [line.strip() for line in lines if line.strip() and 'FriendlyName' not in line]
+            
+            if camera_names:
+                return camera_names
+    except:
+        pass
+    
+    return None
+
+
 def select_camera_gui():
-    # 尝试检测可用摄像头数量
-    max_cameras = 10  # 最大尝试摄像头数量
+    camera_names = get_camera_name_windows()
+    
+    max_cameras = 10
     available_cameras = []
     camera_info = []
     
@@ -268,218 +433,185 @@ def select_camera_gui():
         if cap.isOpened():
             available_cameras.append(i)
             
-            # 尝试获取摄像头信息
             try:
-                # 获取摄像头名称
                 name = cap.get(cv2.CAP_PROP_DEVICE_NAME)
-                if name is None or name == 0:
-                    name = f"摄像头 {i}"
+                if name is None or name == 0 or name == "":
+                    name = None
                 else:
-                    # 确保名称是字符串并处理编码
                     name = str(name)
-                    # 尝试解码可能的中文编码
                     try:
                         name = name.encode('latin1').decode('gbk')
                     except:
-                        pass
+                        try:
+                            name = name.encode('latin1').decode('utf-8')
+                        except:
+                            pass
             except:
-                name = f"摄像头 {i}"
+                name = None
             
-            # 获取分辨率信息
+            if name is None and camera_names and i < len(camera_names):
+                name = camera_names[i]
+            
             try:
+                backend = cap.get(cv2.CAP_PROP_BACKEND)
+                backend_name = {
+                    cv2.CAP_ANY: "Any",
+                    cv2.CAP_VFW: "VFW",
+                    cv2.CAP_V4L: "V4L",
+                    cv2.CAP_V4L2: "V4L2",
+                    cv2.CAP_FIREWIRE: "FireWire",
+                    cv2.CAP_IEEE1394: "IEEE1394",
+                    cv2.CAP_QT: "QT",
+                    cv2.CAP_GSTREAMER: "GStreamer",
+                    cv2.CAP_FFMPEG: "FFMPEG",
+                    cv2.CAP_DSHOW: "DirectShow",
+                    cv2.CAP_MSMF: "Media Foundation",
+                    cv2.CAP_WINRT: "Windows Runtime"
+                }.get(backend, f"Backend {backend}")
+                
                 width = cap.get(cv2.CAP_PROP_FRAME_WIDTH)
                 height = cap.get(cv2.CAP_PROP_FRAME_HEIGHT)
-                res_info = f" ({int(width)}x{int(height)})"
+                fps = cap.get(cv2.CAP_PROP_FPS)
+                
+                res_info = f" ({int(width)}x{int(height)}"
+                if fps > 0:
+                    res_info += f" @ {int(fps)}fps"
+                res_info += ")"
+                
+                if name:
+                    display_name = f"{name}"
+                else:
+                    display_name = f"{backend_name}"
             except:
+                display_name = f"摄像头 {i}"
                 res_info = ""
             
-            camera_info.append(f"{i}: {name}{res_info}")
+            camera_info.append(f"{i}: {display_name}{res_info}")
             cap.release()
-            print(f"发现摄像头 {i}: {name}")
+            print(f"发现摄像头 {i}: {display_name}{res_info}")
     
     if not available_cameras:
         print("未找到可用摄像头")
         sys.exit(1)
     
-    # 创建选择窗口
+    height = 100 + len(available_cameras) * 40
+    width = 500
+    
     cv2.namedWindow("摄像头选择")
-    selected_camera = [available_cameras[0]]  # 默认选中第一个摄像头
+    cv2.resizeWindow("摄像头选择", width, height)
+    selected_camera = [available_cameras[0]]
     
-    # 绘制窗口内容的函数
     def draw_window():
-        # 创建空白图像作为窗口背景
-        height = 50 + len(available_cameras) * 30
-        width = 600
-        img = np.ones((height, width, 3), dtype=np.uint8) * 240  # 浅灰色背景
+        height = 100 + len(available_cameras) * 40
+        width = 500
+        img = np.ones((height, width, 3), dtype=np.uint8) * 255
         
-        # 绘制标题 - 使用PIL绘制中文
-        img = put_chinese_text(img, "请选择摄像头", (20, 10), font_size=24, color=(0, 0, 0))
+        draw_rounded_rectangle(img, (0, 0), (width, 80), (255, 182, 193), radius=15)
+        img = put_chinese_text(img, "摄像头选择", (30, 25), font_size=24, color=(255, 255, 255))
         
-        # 绘制作者主页超链接 - 淡蓝色文字 (BGR格式)
-        img = put_chinese_text(img, "作者主页", (20, 40), font_size=14, color=(230, 216, 173))
+        cv2.circle(img, (460, 40), 20, (255, 192, 203), -1)
+        img = put_chinese_text(img, "×", (452, 25), font_size=24, color=(255, 255, 255))
         
-        # 绘制摄像头列表
         for i, info in enumerate(camera_info):
-            y_pos = 60 + i * 30
-            color = (0, 0, 255) if available_cameras[i] == selected_camera[0] else (0, 0, 0)
-            img = put_chinese_text(img, info, (20, y_pos-10), font_size=16, color=color)
+            y_pos = 100 + i * 40
+            color = (224, 255, 255) if i == selected_camera[0] else (255, 255, 255)
+            draw_rounded_rectangle(img, (50, y_pos), (450, y_pos + 35), color, radius=8)
             
-            # 绘制选择框
-            if available_cameras[i] == selected_camera[0]:
-                cv2.rectangle(img, (10, y_pos-20), (width-10, y_pos+10), (0, 255, 0), 2)
+            if i == selected_camera[0]:
+                cv2.rectangle(img, (50, y_pos), (450, y_pos + 35), (176, 224, 230), 2)
+            
+            img = put_chinese_text(img, info, (70, y_pos + 10), font_size=16, color=(64, 64, 64))
         
-        # 绘制确认提示
-        img = put_chinese_text(img, "按Enter键确认选择", (width-200, height-20), font_size=16, color=(0, 0, 255))
-        
-        cv2.imshow("摄像头选择", img)
+        return img
     
-    # 鼠标事件处理函数
-    def mouse_event(event, x, y, flags, param):
+    def on_mouse_click(event, x, y, flags, param):
         if event == cv2.EVENT_LBUTTONDOWN:
-            # 检查是否点击作者主页链接
-            if y > 30 and y < 50 and x > 20 and x < 100:
-                webbrowser.open("https://space.bilibili.com/3493134080149590")
-                return
-            
-            # 检查点击位置是否在摄像头列表项上
             for i in range(len(available_cameras)):
-                y_pos = 60 + i * 30
-                if y > y_pos-20 and y < y_pos+10 and x > 10 and x < 600-10:
-                    selected_camera[0] = available_cameras[i]
-                    draw_window()
+                y_pos = 100 + i * 40
+                if 50 <= x <= 450 and y_pos <= y <= y_pos + 35:
+                    selected_camera[0] = i
                     break
     
-    # 注册鼠标事件
-    cv2.setMouseCallback("摄像头选择", mouse_event)
+    cv2.setMouseCallback("摄像头选择", on_mouse_click)
     
-    # 显示窗口
-    draw_window()
-    
-    # 等待用户选择
     while True:
-        key = cv2.waitKey(1) & 0xFF
-        if key == 13:  # Enter键
-            break
+        frame = draw_window()
+        cv2.imshow("摄像头选择", frame)
+        cv2.resizeWindow("摄像头选择", 500, frame.shape[0])
+        
+        if cv2.getWindowProperty("摄像头选择", cv2.WND_PROP_VISIBLE) < 1:
+            cv2.destroyAllWindows()
+            sys.exit(1)
+        
+        key = cv2.waitKey(25) & 0xFF
+        
+        if key == 13:
+            cv2.destroyAllWindows()
+            return available_cameras[selected_camera[0]]
+        elif key == 27:
+            cv2.destroyAllWindows()
+            return None
         elif key == ord('q'):
-            print("用户取消选择")
-            sys.exit(0)
-    
-    # 关闭选择窗口
-    cv2.destroyWindow("摄像头选择")
-    
-    # 初始化选定的摄像头
-    cap = cv2.VideoCapture(selected_camera[0])
-    if not cap.isOpened():
-        print(f"无法打开摄像头 {selected_camera[0]}")
-        sys.exit(1)
-    
-    print(f"已成功打开摄像头 {selected_camera[0]}")
-    return cap
+            cv2.destroyAllWindows()
+            sys.exit(1)
 
-# 初始化摄像头
-cap = select_camera_gui()
 
-print("摄像头已打开，按 'q' 键退出...")
+camera_id = select_camera_gui()
+cap = cv2.VideoCapture(camera_id)
 
-# 获取屏幕分辨率
-user32 = ctypes.windll.user32
-screen_width = user32.GetSystemMetrics(0)
-screen_height = user32.GetSystemMetrics(1)
+if not cap.isOpened():
+    print(f"无法打开摄像头 {camera_id}")
+    sys.exit(1)
 
-# 创建窗口（非全屏）
-cv2.namedWindow('YOLO实时检测', cv2.WINDOW_NORMAL)
-# 设置窗口大小为1280x720，更大的显示窗口
-cv2.resizeWindow('YOLO实时检测', 1280, 720)
-
-# 帧率控制
-import time
-last_time = time.time()
-fps = 30  # 目标帧率
-frame_delay = 1.0 / fps
-
-while True:
-    ret, frame = cap.read()
-    if not ret:
-        print("无法获取视频流，程序即将退出...")
-        break
-    
-    # 预处理：调整尺寸以适应窗口
-    frame = cv2.resize(frame, (1280, 720))
-    
-    height, width, channels = frame.shape
-
-    # 降低输入分辨率以提高速度并减少资源占用
-    blob = cv2.dnn.blobFromImage(frame, 0.00392, (128, 128), (0, 0, 0), True, crop=False)
-
-    net.setInput(blob)
-    outs = net.forward(output_layers)
-
-    class_ids, confidences, boxes = [], [], []
-    for out in outs:
-        for detection in out:
-            if len(detection) < 6:
-                continue
-            scores = detection[5:]
-            class_id = np.argmax(scores)
-            confidence = scores[class_id]
-            # 提高置信度阈值减少计算量
-            if confidence > 0.7:
-                try:
-                    center_x, center_y = int(detection[0]*width), int(detection[1]*height)
-                    w, h = int(detection[2]*width), int(detection[3]*height)
-                    x, y = int(center_x - w/2), int(center_y - h/2)
-                    boxes.append([x, y, w, h])
+try:
+    while True:
+        ret, frame = cap.read()
+        if not ret:
+            break
+        
+        blob = cv2.dnn.blobFromImage(frame, 1 / 255.0, (416, 416), swapRB=True, crop=False)
+        net.setInput(blob)
+        outputs = net.forward(output_layers)
+        
+        boxes = []
+        confidences = []
+        class_ids = []
+        
+        for output in outputs:
+            for detection in output:
+                scores = detection[5:]
+                class_id = np.argmax(scores)
+                confidence = scores[class_id]
+                
+                if confidence > 0.5:
+                    center_x = int(detection[0] * frame.shape[1])
+                    center_y = int(detection[1] * frame.shape[0])
+                    width = int(detection[2] * frame.shape[1])
+                    height = int(detection[3] * frame.shape[0])
+                    
+                    x = int(center_x - width / 2)
+                    y = int(center_y - height / 2)
+                    
+                    boxes.append([x, y, width, height])
                     confidences.append(float(confidence))
                     class_ids.append(class_id)
-                except (IndexError, ValueError) as e:
-                    continue
+        
+        indices = cv2.dnn.NMSBoxes(boxes, confidences, 0.5, 0.4)
+        
+        if len(indices) > 0:
+            for i in indices.flatten():
+                x, y, w, h = boxes[i]
+                cv2.rectangle(frame, (x, y), (x + w, y + h), (0, 255, 0), 2)
+                
+                label = f"{classes[class_ids[i]]}: {confidences[i]:.2f}"
+                frame = put_chinese_text(frame, label, (x, y - 10), font_size=14, color=(0, 255, 0))
+        
+        cv2.imshow('Object Detection', frame)
+        
+        if cv2.waitKey(1) & 0xFF == ord('q'):
+            break
+finally:
+    cap.release()
+    cv2.destroyAllWindows()
 
-    # 提高NMS阈值减少重叠框计算
-    indexes = cv2.dnn.NMSBoxes(boxes, confidences, 0.7, 0.6)
-    font = cv2.FONT_HERSHEY_SIMPLEX
-    for i in range(len(boxes)):
-        if i in indexes:
-            x, y, w, h = boxes[i]
-            label = f'{classes[class_ids[i]]} {confidences[i]:.2f}'
-            
-            # 模拟距离计算 (这里使用物体宽度的倒数作为距离近似值)
-            # 在实际应用中，需要根据相机参数和物体实际大小进行计算
-            distance_cm = int(1000 / (w + 1))  # 简单模拟，实际应用需要更复杂的计算
-            
-            # 绘制边框
-            cv2.rectangle(frame, (x, y), (x+w, y+h), (0, 255, 0), 2)
-            
-            # 绘制标签
-            cv2.putText(frame, label, (x, y-10), font, 0.9, (0, 255, 0), 2)
-            
-            # 在边框右侧显示距离
-            distance_text = f'{distance_cm} cm'
-            text_size = cv2.getTextSize(distance_text, font, 0.9, 2)[0]
-            text_x = x + w + 10
-            text_y = y + h // 2 + text_size[1] // 2
-            cv2.putText(frame, distance_text, (text_x, text_y), font, 0.9, (0, 255, 0), 2)
-
-    cv2.imshow('YOLO实时检测', frame)
-    
-    # 帧率控制
-    current_time = time.time()
-    elapsed = current_time - last_time
-    if elapsed < frame_delay:
-        time.sleep(frame_delay - elapsed)
-    last_time = time.time()
-    
-    # 检测窗口关闭事件或按'q'键退出
-    if (cv2.waitKey(1) & 0xFF == ord('q')) or (cv2.getWindowProperty('YOLO实时检测', cv2.WND_PROP_VISIBLE) < 1):
-        break
-
-# 释放资源
-cap.release()
-cv2.destroyAllWindows()
-print("程序已正常关闭")
-print("程序已退出")
-
-
-input("请输入任意字符结束")
-
-#114514
 #Windows_123_fish only

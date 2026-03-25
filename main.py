@@ -240,7 +240,7 @@ def verify_trial_code():
                 button_clicked = True
     
     cv2.setMouseCallback('使用码验证', on_mouse_click)
-    
+    # 主循环
     while attempts < max_attempts:
         frame = np.zeros((450, 500, 3), dtype=np.uint8)
         

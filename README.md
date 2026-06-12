@@ -1,6 +1,10 @@
- CMKA - 实时目标检测应用
+# CMKA - 实时目标检测应用
 
 <div align="center">
+
+![软件图标](软件图标.png)
+
+<br>
 
 <a href="README.md">简体中文</a> ｜
 <a href="README_en.md">English</a> ｜

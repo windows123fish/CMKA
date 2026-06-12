@@ -1,70 +1,34 @@
 import os
 import sys
 
-# ✅ 方案二：禁止 PyQt5 自动加载平台插件（必须第一行就设置）
-os.environ["QT_QPA_PLATFORM_PLUGIN_PATH"] = ""
-os.environ["QT_PLUGIN_PATH"] = ""
-
-# ✅ 方案一：强制 torch 在 PyQt5 之前加载（关键！）
-print("正在加载PyTorch...")
-import torch
-print(f"PyTorch版本: {torch.__version__}")
-
-# ✅ 然后再加载 ultralytics
-from ultralytics import YOLO
-
 import cv2
-import urllib.request
-import shutil
 import numpy as np
 import traceback
-import ctypes
-import webbrowser
-import pyperclip
 
-# 设置Qt平台插件路径
-# 尝试直接导入PyQt5并获取其安装路径
 try:
     import PyQt5
-    pyqt5_path = os.path.dirname(PyQt5.__file__)
-    # 尝试Qt和Qt5两种可能的文件夹名称
-    for qt_folder in ['Qt', 'Qt5']:
-        qt_plugins_path = os.path.join(pyqt5_path, qt_folder, 'plugins')
-        if os.path.exists(qt_plugins_path):
-            os.environ['QT_QPA_PLATFORM_PLUGIN_PATH'] = qt_plugins_path
-            print(f"设置Qt平台插件路径: {qt_plugins_path}")
-            break
-    else:
-        print(f"Qt平台插件路径不存在")
-        # 尝试其他可能的路径
-        possible_paths = []
+    if PyQt5.__file__:
+        pyqt5_path = os.path.dirname(PyQt5.__file__)
         for qt_folder in ['Qt', 'Qt5']:
-            possible_paths.append(os.path.join(os.path.dirname(sys.executable), 'Lib', 'site-packages', 'PyQt5', qt_folder, 'plugins'))
-            possible_paths.append(os.path.join(os.path.expanduser('~'), 'AppData', 'Roaming', 'Python', 'Python38', 'site-packages', 'PyQt5', qt_folder, 'plugins'))
-        
-        for path in possible_paths:
-            if os.path.exists(path):
-                os.environ['QT_QPA_PLATFORM_PLUGIN_PATH'] = path
-                print(f"设置Qt平台插件路径: {path}")
+            qt_plugins_path = os.path.join(pyqt5_path, qt_folder, 'plugins')
+            if os.path.exists(qt_plugins_path):
+                os.environ['QT_QPA_PLATFORM_PLUGIN_PATH'] = qt_plugins_path
+                print(f"设置Qt平台插件路径: {qt_plugins_path}")
                 break
         else:
-            print("警告: 未找到Qt平台插件路径")
-            print("请确保已正确安装PyQt5")
+            print(f"Qt平台插件路径不存在")
+    else:
+        print("PyQt5路径为空")
 except ImportError:
     print("错误: 未找到PyQt5模块")
     print("请运行: pip install PyQt5")
     sys.exit(1)
 
-from rich.progress import Progress, SpinnerColumn, TextColumn, BarColumn, TaskProgressColumn, TimeRemainingColumn
-from PyQt5.QtWidgets import QApplication, QMainWindow, QWidget, QVBoxLayout, QHBoxLayout, QLabel, QLineEdit, QPushButton, QListWidget, QListWidgetItem, QMessageBox, QDialog, QSizePolicy, QCheckBox, QScrollArea
-from PyQt5.QtCore import Qt, QThread, pyqtSignal, QTimer, QEvent
+from PyQt5.QtWidgets import (QApplication, QMainWindow, QWidget, QVBoxLayout, QHBoxLayout, 
+                            QLabel, QLineEdit, QPushButton, QListWidget, QListWidgetItem, 
+                            QMessageBox, QDialog, QCheckBox, QScrollArea)
+from PyQt5.QtCore import Qt, QThread, pyqtSignal, QEvent
 from PyQt5.QtGui import QImage, QPixmap, QFont
-
-# 导入PIL库（尝试导入）
-try:
-    import pkg_resources.py2_warn
-except ImportError:
-    pass
 
 try:
     from PIL import Image, ImageDraw, ImageFont
@@ -124,18 +88,55 @@ def draw_rounded_rectangle(img, pt1, pt2, color, thickness=-1, radius=20):
     return img
 
 
-# ✅ 加载YOLO26n模型
 print("正在加载YOLO26n模型...")
-model = YOLO('yolo26n.pt')
-print("YOLO26n模型加载成功！")
-use_ultralytics = True
-# YOLO26n使用的类别列表
-classes = model.names
-# 禁用的类别列表（集合，快速查找）
+use_opencv_dnn = True
+net = None
+
+if use_opencv_dnn:
+    # 尝试加载ONNX模型文件
+    onnx_model_path = os.path.join(os.path.dirname(os.path.abspath(__file__)), 'yolo26n.onnx')
+    cfg_model_path = os.path.join(os.path.dirname(os.path.abspath(__file__)), 'yolo26.cfg')
+    weights_model_path = os.path.join(os.path.dirname(os.path.abspath(__file__)), 'yolo26.weights')
+    
+    if os.path.exists(onnx_model_path):
+        try:
+            net = cv2.dnn.readNet(onnx_model_path)
+            print(f"YOLO26n模型加载成功！(ONNX格式: {onnx_model_path})")
+        except Exception as e:
+            print(f"ONNX模型加载失败: {e}")
+    elif os.path.exists(weights_model_path):
+        try:
+            net = cv2.dnn.readNetFromDarknet(cfg_model_path, weights_model_path)
+            print(f"YOLO26n模型加载成功！(Darknet格式)")
+        except Exception as e:
+            print(f"Darknet模型加载失败: {e}")
+    else:
+        print("警告: 未找到YOLO26n模型文件 (.onnx 或 .weights)")
+        print("提示: 请将模型文件重命名为 yolo26n.onnx 放置在程序目录下")
+        print("程序将以仅显示视频模式运行...")
+
+    classes = {i: name for i, name in enumerate([
+        'person', 'bicycle', 'car', 'motorbike', 'aeroplane', 'bus', 'train', 'truck', 'boat',
+        'traffic light', 'fire hydrant', 'stop sign', 'parking meter', 'bench', 'bird', 'cat',
+        'dog', 'horse', 'sheep', 'cow', 'elephant', 'bear', 'zebra', 'giraffe', 'backpack',
+        'umbrella', 'handbag', 'tie', 'suitcase', 'frisbee', 'skis', 'snowboard', 'sports ball',
+        'kite', 'baseball bat', 'baseball glove', 'skateboard', 'surfboard', 'tennis racket',
+        'bottle', 'wine glass', 'cup', 'fork', 'knife', 'spoon', 'bowl', 'banana', 'apple',
+        'sandwich', 'orange', 'broccoli', 'carrot', 'hot dog', 'pizza', 'donut', 'cake', 'chair',
+        'sofa', 'pottedplant', 'bed', 'diningtable', 'toilet', 'tvmonitor', 'laptop', 'mouse',
+        'remote', 'keyboard', 'cell phone', 'microwave', 'oven', 'toaster', 'sink', 'refrigerator',
+        'book', 'clock', 'vase', 'scissors', 'teddy bear', 'hair drier', 'toothbrush'
+    ])}
+else:
+    from ultralytics import YOLO
+    model = YOLO('yolo26n.pt')
+    print("YOLO26n模型加载成功！")
+    classes = model.names
+
+use_ultralytics = False
 disabled_classes = set()
 
 
-# 使用码验证对话框
 class LicenseDialog(QDialog):
     def __init__(self, parent=None):
         super().__init__(parent)
@@ -146,12 +147,9 @@ class LicenseDialog(QDialog):
         self.correct_code = "Windows123fish"
         self.max_attempts = 5
         self.attempts = 0
-        self.user_input = ""
-        self.show_error = False
         
         layout = QVBoxLayout()
         
-        # 标题栏
         header_widget = QWidget()
         header_layout = QHBoxLayout(header_widget)
         header_widget.setStyleSheet("background-color: #FFB6C1; border-radius: 15px;")
@@ -169,19 +167,17 @@ class LicenseDialog(QDialog):
         
         layout.addWidget(header_widget)
         
-        # 提示信息
         info_widget = QWidget()
         info_widget.setStyleSheet("background-color: #E0FFFF; border: 2px solid #B0E0E6; border-radius: 10px; margin: 20px;")
         info_layout = QVBoxLayout(info_widget)
         
-        info_label1 = QLabel("重要提示：本软件为免费软件，如果您是购买的，请尽快联系退款与举报！")
+        info_label1 = QLabel("重要提示：本软件为免费软件")
         info_label1.setFont(QFont("Microsoft YaHei", 14))
         info_label1.setStyleSheet("color: #0066CC;")
         info_layout.addWidget(info_label1)
         
         layout.addWidget(info_widget)
         
-        # 输入区域
         input_label = QLabel("请输入使用码以继续使用本软件")
         input_label.setFont(QFont("Microsoft YaHei", 14))
         input_label.setStyleSheet("color: #404040; margin: 0 30px 15px 30px;")
@@ -208,7 +204,6 @@ class LicenseDialog(QDialog):
         
         layout.addLayout(input_layout)
         
-        # 错误信息
         self.error_label = QLabel()
         self.error_label.setFont(QFont("Microsoft YaHei", 12))
         self.error_label.setStyleSheet("color: red; text-align: center; margin: 0 30px 20px 30px;")
@@ -216,7 +211,6 @@ class LicenseDialog(QDialog):
         self.error_label.setAlignment(Qt.AlignCenter)
         layout.addWidget(self.error_label)
         
-        # 底部提示
         bottom_widget = QWidget()
         bottom_widget.setStyleSheet("background-color: #F0F8FF; border-radius: 10px; margin: 0 30px 20px 30px;")
         bottom_layout = QVBoxLayout(bottom_widget)
@@ -240,13 +234,12 @@ class LicenseDialog(QDialog):
         self.code_input.setFocus()
     
     def verify_code(self):
-        self.user_input = self.code_input.text()
-        if self.user_input == self.correct_code:
+        user_input = self.code_input.text()
+        if user_input == self.correct_code:
             QMessageBox.information(self, "验证成功", "欢迎使用本软件")
             self.accept()
         else:
             self.attempts += 1
-            self.show_error = True
             self.error_label.setText(f"使用码错误，请重试\n剩余尝试次数：{self.max_attempts - self.attempts}")
             self.code_input.clear()
             if self.attempts >= self.max_attempts:
@@ -254,7 +247,6 @@ class LicenseDialog(QDialog):
                 self.reject()
 
 
-# 摄像头选择对话框
 class CameraSelectDialog(QDialog):
     def __init__(self, parent=None):
         super().__init__(parent)
@@ -263,12 +255,10 @@ class CameraSelectDialog(QDialog):
         self.setStyleSheet("background-color: white;")
         
         self.available_cameras = []
-        self.camera_info = []
         self.selected_camera = None
         
         layout = QVBoxLayout()
         
-        # 标题栏
         header_widget = QWidget()
         header_layout = QHBoxLayout(header_widget)
         header_widget.setStyleSheet("background-color: #FFB6C1; border-radius: 15px;")
@@ -286,14 +276,12 @@ class CameraSelectDialog(QDialog):
         
         layout.addWidget(header_widget)
         
-        # 摄像头列表
         self.camera_list = QListWidget()
         self.camera_list.setFont(QFont("Microsoft YaHei", 16))
         self.camera_list.setStyleSheet("background-color: white; border: 2px solid #B0E0E6; border-radius: 10px; margin: 20px;")
         self.camera_list.itemClicked.connect(self.on_camera_selected)
         layout.addWidget(self.camera_list)
         
-        # 确认按钮
         confirm_button = QPushButton("确认选择")
         confirm_button.setFont(QFont("Microsoft YaHei", 14))
         confirm_button.setStyleSheet("background-color: #FF69B4; color: white; border-radius: 10px; padding: 10px; margin: 0 20px 20px 20px;")
@@ -306,7 +294,6 @@ class CameraSelectDialog(QDialog):
     def detect_cameras(self):
         max_cameras = 10
         self.available_cameras = []
-        self.camera_info = []
         
         print("正在检测可用摄像头...")
         for i in range(max_cameras):
@@ -314,9 +301,10 @@ class CameraSelectDialog(QDialog):
             if cap.isOpened():
                 self.available_cameras.append(i)
                 
+                name = None
                 try:
                     name = cap.get(cv2.CAP_PROP_DEVICE_NAME)
-                    if name is None or name == 0 or name == "":
+                    if name in (None, 0, ""):
                         name = None
                     else:
                         name = str(name)
@@ -354,18 +342,14 @@ class CameraSelectDialog(QDialog):
                     res_info = f" ({int(width)}x{int(height)}"
                     if fps > 0:
                         res_info += f" @ {int(fps)}fps"
-                    res_info += ""
+                    res_info += ")"
                     
-                    if name:
-                        display_name = f"{name}"
-                    else:
-                        display_name = f"{backend_name}"
+                    display_name = name if name else backend_name
                 except:
                     display_name = f"摄像头 {i}"
                     res_info = ""
                 
                 camera_info_str = f"{i}: {display_name}{res_info}"
-                self.camera_info.append(camera_info_str)
                 item = QListWidgetItem(camera_info_str)
                 self.camera_list.addItem(item)
                 cap.release()
@@ -375,7 +359,6 @@ class CameraSelectDialog(QDialog):
             QMessageBox.critical(self, "错误", "未找到可用摄像头")
             self.reject()
         else:
-            # 默认选择第一个摄像头
             self.camera_list.setCurrentRow(0)
             self.selected_camera = self.available_cameras[0]
     
@@ -391,7 +374,6 @@ class CameraSelectDialog(QDialog):
             QMessageBox.warning(self, "警告", "请选择一个摄像头")
 
 
-# 禁用类别对话框
 class DisableClassDialog(QDialog):
     def __init__(self, parent=None):
         super().__init__(parent)
@@ -401,7 +383,6 @@ class DisableClassDialog(QDialog):
         
         layout = QVBoxLayout()
         
-        # 标题栏
         header_widget = QWidget()
         header_layout = QHBoxLayout(header_widget)
         header_widget.setStyleSheet("background-color: #FFB6C1; border-radius: 15px;")
@@ -419,14 +400,12 @@ class DisableClassDialog(QDialog):
         
         layout.addWidget(header_widget)
         
-        # 说明文字
         info_label = QLabel("勾选的类别将不会被识别显示")
         info_label.setFont(QFont("Microsoft YaHei", 12))
         info_label.setStyleSheet("color: #9370DB; padding: 15px;")
         info_label.setAlignment(Qt.AlignCenter)
         layout.addWidget(info_label)
         
-        # 滚动区域
         scroll = QScrollArea()
         scroll.setWidgetResizable(True)
         scroll.setStyleSheet("""
@@ -440,15 +419,12 @@ class DisableClassDialog(QDialog):
         scroll_content = QWidget()
         self.scroll_layout = QVBoxLayout(scroll_content)
         
-        # 保存复选框的引用
         self.checkboxes = []
         
-        # 动态生成所有类别的复选框
         for class_id, class_name in classes.items():
             checkbox = QCheckBox(f"{class_id}. {class_name}")
             checkbox.setFont(QFont("Microsoft YaHei", 11))
             checkbox.setStyleSheet("padding: 8px; color: #696969;")
-            # 如果这个类别已经被禁用，则勾选
             if class_name in disabled_classes:
                 checkbox.setChecked(True)
             self.checkboxes.append((class_name, checkbox))
@@ -457,7 +433,6 @@ class DisableClassDialog(QDialog):
         scroll.setWidget(scroll_content)
         layout.addWidget(scroll)
         
-        # 按钮区域
         button_layout = QHBoxLayout()
         
         clear_button = QPushButton("清除全部")
@@ -477,16 +452,12 @@ class DisableClassDialog(QDialog):
         self.setLayout(layout)
     
     def clear_all(self):
-        """清除所有勾选"""
         for class_name, checkbox in self.checkboxes:
             checkbox.setChecked(False)
     
     def save_and_close(self):
-        """保存选择并关闭"""
         global disabled_classes
-        # 清空之前的禁用列表
         disabled_classes.clear()
-        # 添加新勾选的类别
         for class_name, checkbox in self.checkboxes:
             if checkbox.isChecked():
                 disabled_classes.add(class_name)
@@ -495,7 +466,6 @@ class DisableClassDialog(QDialog):
         self.accept()
 
 
-# 视频处理线程
 class VideoThread(QThread):
     change_pixmap_signal = pyqtSignal(QImage)
     
@@ -509,35 +479,27 @@ class VideoThread(QThread):
         while self.running:
             ret, frame = cap.read()
             if ret:
-                # 目标检测
-                if use_ultralytics:
-                    # 使用ultralytics库的YOLO26n模型
-                    # conf=0.5：只显示置信度>50%的检测结果
-                    # iou=0.45：重叠超过45%的框会被NMS过滤掉，避免重叠
+                if use_ultralytics and 'model' in globals():
                     results = model(frame, conf=0.5, iou=0.45)
-                    
-                    # 处理检测结果
+
                     for result in results:
                         for box in result.boxes:
                             x1, y1, x2, y2 = map(int, box.xyxy[0])
                             confidence = float(box.conf[0])
                             class_id = int(box.cls[0])
                             class_name = classes[class_id]
-                            
-                            # 如果类别被禁用，则跳过
+
                             if class_name in disabled_classes:
                                 continue
-                            
-                            # 绘制检测结果
+
                             cv2.rectangle(frame, (x1, y1), (x2, y2), (0, 255, 0), 2)
                             label = f"{class_name}: {confidence:.2f}"
                             frame = put_chinese_text(frame, label, (x1, y1 - 10), font_size=14, color=(0, 255, 0))
-                else:
-                    # 使用YOLOv3-tiny模型
+                elif use_opencv_dnn and net is not None:
+                    # OpenCV DNN模式 - 执行目标检测
                     blob = cv2.dnn.blobFromImage(frame, 1 / 255.0, (416, 416), swapRB=True, crop=False)
                     net.setInput(blob)
                     
-                    # 获取输出层
                     layer_names = net.getLayerNames()
                     try:
                         output_layers = [layer_names[i - 1] for i in net.getUnconnectedOutLayers()]
@@ -546,7 +508,6 @@ class VideoThread(QThread):
                     
                     outputs = net.forward(output_layers)
                     
-                    # 处理检测结果
                     boxes = []
                     confidences = []
                     class_ids = []
@@ -570,24 +531,21 @@ class VideoThread(QThread):
                                 confidences.append(float(confidence))
                                 class_ids.append(class_id)
                     
-                    # 非极大值抑制
                     indices = cv2.dnn.NMSBoxes(boxes, confidences, 0.5, 0.4)
                     
-                    # 绘制检测结果
                     if len(indices) > 0:
                         for i in indices.flatten():
                             x, y, w, h = boxes[i]
                             cv2.rectangle(frame, (x, y), (x + w, y + h), (0, 255, 0), 2)
                             
-                            label = f"{classes[class_ids[i]]}: {confidences[i]:.2f}"
-                            frame = put_chinese_text(frame, label, (x, y - 10), font_size=14, color=(0, 255, 0))
+                            if class_ids[i] in classes:
+                                label = f"{classes[class_ids[i]]}: {confidences[i]:.2f}"
+                                frame = put_chinese_text(frame, label, (x, y - 10), font_size=14, color=(0, 255, 0))
                 
-                # 转换为QImage
                 rgb_image = cv2.cvtColor(frame, cv2.COLOR_BGR2RGB)
                 h, w, ch = rgb_image.shape
                 bytes_per_line = ch * w
                 convert_to_Qt_format = QImage(rgb_image.data, w, h, bytes_per_line, QImage.Format_RGB888)
-                # 发送原始图像，由主窗口根据当前大小进行缩放
                 self.change_pixmap_signal.emit(convert_to_Qt_format)
         
         cap.release()
@@ -597,51 +555,42 @@ class VideoThread(QThread):
         self.wait()
 
 
-# 自定义主窗口
 class MainWindow(QMainWindow):
     def __init__(self, camera_id):
         super().__init__()
-        # 隐藏默认标题栏
         self.setWindowFlags(Qt.FramelessWindowHint | Qt.Window)
         self.setAttribute(Qt.WA_TranslucentBackground)
         self.setGeometry(100, 100, 900, 700)
         
-        # 主窗口部件
         main_widget = QWidget()
         self.setCentralWidget(main_widget)
         
-        # 主布局
         main_layout = QVBoxLayout(main_widget)
         main_layout.setContentsMargins(0, 0, 0, 0)
         
-        # 自定义标题栏
         title_bar = QWidget()
         title_bar.setFixedHeight(60)
         title_bar.setStyleSheet("background-color: #FFB6C1; border-top-left-radius: 15px; border-top-right-radius: 15px;")
         title_layout = QHBoxLayout(title_bar)
         title_layout.setContentsMargins(20, 0, 20, 0)
         
-        # 标题
         title_label = QLabel("实时目标检测")
         title_label.setFont(QFont("Microsoft YaHei", 18, QFont.Bold))
         title_label.setStyleSheet("color: white;")
         title_layout.addWidget(title_label, 1, Qt.AlignLeft | Qt.AlignVCenter)
         
-        # 最小化按钮
         min_button = QPushButton("_")
         min_button.setFixedSize(30, 30)
         min_button.setStyleSheet("background-color: #FFC0CB; color: white; border-radius: 15px; font-size: 16px;")
         min_button.clicked.connect(self.showMinimized)
         title_layout.addWidget(min_button, Qt.AlignRight | Qt.AlignVCenter)
         
-        # 最大化/还原按钮
         self.max_button = QPushButton("□")
         self.max_button.setFixedSize(30, 30)
         self.max_button.setStyleSheet("background-color: #FFC0CB; color: white; border-radius: 15px; font-size: 16px;")
         self.max_button.clicked.connect(self.toggle_maximize)
         title_layout.addWidget(self.max_button, Qt.AlignRight | Qt.AlignVCenter)
         
-        # 关闭按钮
         close_button = QPushButton("×")
         close_button.setFixedSize(30, 30)
         close_button.setStyleSheet("background-color: #FF69B4; color: white; border-radius: 15px; font-size: 16px;")
@@ -650,19 +599,16 @@ class MainWindow(QMainWindow):
         
         main_layout.addWidget(title_bar)
         
-        # 内容区域
         content_widget = QWidget()
         content_widget.setStyleSheet("background-color: white; border-bottom-left-radius: 15px; border-bottom-right-radius: 15px; padding: 20px;")
         content_layout = QVBoxLayout(content_widget)
         
-        # 视频显示标签
         self.video_label = QLabel()
         self.video_label.setAlignment(Qt.AlignCenter)
         self.video_label.setStyleSheet("border: 2px solid #B0E0E6; border-radius: 10px; min-height: 480px;")
         self.video_label.setScaledContents(True)
         content_layout.addWidget(self.video_label)
         
-        # 控制按钮
         control_layout = QHBoxLayout()
         control_layout.setContentsMargins(0, 20, 0, 0)
         control_layout.setSpacing(15)
@@ -695,19 +641,15 @@ class MainWindow(QMainWindow):
         content_layout.addLayout(control_layout)
         main_layout.addWidget(content_widget)
         
-        # 视频线程
         self.thread = None
         self.camera_id = camera_id
         
-        # 窗口拖动相关
         self.dragging = False
         self.drag_start_pos = None
         
-        # 安装事件过滤器
         title_bar.installEventFilter(self)
     
     def eventFilter(self, obj, event):
-        """事件过滤器，用于实现窗口拖动"""
         if event.type() == QEvent.MouseButtonPress:
             if event.button() == Qt.LeftButton:
                 self.dragging = True
@@ -724,7 +666,6 @@ class MainWindow(QMainWindow):
         return super().eventFilter(obj, event)
     
     def toggle_maximize(self):
-        """切换窗口最大化/还原状态"""
         if self.isMaximized():
             self.showNormal()
             self.max_button.setText("□")
@@ -750,13 +691,10 @@ class MainWindow(QMainWindow):
         self.video_label.setPixmap(QPixmap.fromImage(qt_image))
     
     def switch_camera(self):
-        # 停止当前检测
         self.stop_detection()
         
-        # 打开摄像头选择对话框
         camera_dialog = CameraSelectDialog(self)
         if camera_dialog.exec_():
-            # 用户选择了新的摄像头
             new_camera_id = camera_dialog.selected_camera
             if new_camera_id != self.camera_id:
                 self.camera_id = new_camera_id
@@ -765,7 +703,6 @@ class MainWindow(QMainWindow):
                 QMessageBox.information(self, "提示", "当前已选择该摄像头")
     
     def open_disable_dialog(self):
-        """打开禁用类别对话框"""
         disable_dialog = DisableClassDialog(self)
         disable_dialog.exec_()
     
@@ -777,7 +714,6 @@ class MainWindow(QMainWindow):
 def main():
     app = QApplication(sys.argv)
     
-    # 显示使用码验证
     license_dialog = LicenseDialog()
     if not license_dialog.exec_():
         print("验证失败，程序退出")
@@ -785,7 +721,6 @@ def main():
     
     print("验证成功，欢迎使用！")
     
-    # 显示摄像头选择
     camera_dialog = CameraSelectDialog()
     if not camera_dialog.exec_():
         print("未选择摄像头，程序退出")
@@ -793,7 +728,6 @@ def main():
     
     camera_id = camera_dialog.selected_camera
     
-    # 显示主窗口
     window = MainWindow(camera_id)
     window.show()
     

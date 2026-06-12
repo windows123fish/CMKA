@@ -131,8 +131,13 @@ AUTHORS OR COPYRIGHT HOLDERS BE LIABLE FOR ANY CLAIM, DAMAGES OR OTHER
 LIABILITY, WHETHER IN AN ACTION OF CONTRACT, TORT OR OTHERWISE, ARISING FROM,
 OUT OF OR IN CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS IN THE
 SOFTWARE.
+
+
+
 [MIT许可证译文]
+
 [*译文部分内容可能为AI或机翻]
+
 MIT 许可证
 版权所有 (c) 2026 Windows_123_fish
 特此授予任何获得本软件及相关文档文件（以下简称“软件”）副本的人，免费、无限制地处理本软件的权利，包括但不限于使用、复制、修改、合并、发布、分发、再许可和/或销售本软件的副本，并允许获得本软件的人员在遵守以下条件的前提下这样做：

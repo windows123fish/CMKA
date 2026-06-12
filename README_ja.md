@@ -1,7 +1,9 @@
 # CMKA - リアルタイム物体検出アプリケーション
 
 <div align="center">
+    ![软件图标](软件图标.png)
 
+<br>
 <a href="README.md">简体中文</a> ｜
 <a href="README_en.md">English</a> ｜
 <a href="README_zh-TW.md">繁體中文</a> ｜

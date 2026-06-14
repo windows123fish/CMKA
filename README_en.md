@@ -21,7 +21,7 @@
 
 </div>
 
-CMKA is a real-time object detection application based on **YOLO26n** and **OpenCV DNN**, with an elegant GUI built using PyQt5.
+CMKA is a real-time object detection application based on **YOLO26n** and **Ultralytics**, with an elegant GUI built using PyQt5.
 
 ## Key Features
 
@@ -29,6 +29,10 @@ CMKA is a real-time object detection application based on **YOLO26n** and **Open
 - ✅ **80 Object Categories** - Including person, vehicle, animal, daily items, food, etc.
 - ✅ **Chinese Label Display** - Clear Chinese category names using PIL
 - ✅ **Category Filtering** - Customizable category exclusion
+- ✅ **Object Tracking** - Automatic target tracking with unique ID
+- ✅ **Trajectory Drawing** - Record and draw object movement path (except for person)
+- ✅ **Position Prediction** - Predict next frame position (except for person)
+- ✅ **Trajectory Settings** - Customizable trajectory display and colors
 - ✅ **Elegant UI** - Custom title bar and rounded window design
 - ✅ **Window Controls** - Minimize, maximize, and drag operations
 
@@ -38,7 +42,8 @@ CMKA is a real-time object detection application based on **YOLO26n** and **Open
 |-----------|---------|---------|
 | Python | 3.12+ | Programming Language |
 | PyQt5 | 5.15+ | GUI Framework |
-| OpenCV | 4.8+ | Computer Vision, DNN Inference |
+| Ultralytics | 8.0+ | YOLO Model Inference |
+| OpenCV | 4.8+ | Computer Vision |
 | PIL/Pillow | 10.0+ | Chinese Text Rendering |
 | NumPy | 1.24+ | Numerical Computing |
 
@@ -46,7 +51,7 @@ CMKA is a real-time object detection application based on **YOLO26n** and **Open
 
 ```bash
 # Install dependencies
-pip install PyQt5 opencv-python pillow numpy
+pip install PyQt5 opencv-python pillow numpy ultralytics
 
 # Run application
 python main.py
@@ -59,6 +64,16 @@ python main.py
 3. Select available camera from the dialog
 4. Click "Start Detection" to begin real-time detection
 5. Click "Disable Categories" to exclude specific objects
+6. Click "Track Settings" to configure trajectory display and colors
+
+## Track Settings
+
+- **Show Trajectory** - Display object movement path when checked
+- **Show Prediction** - Display predicted next position (yellow dot) when checked
+- **Trajectory Color** - Red, Blue, Green, Yellow, Purple, White
+- **Prediction Color** - Yellow, Red, Blue, Green, Purple, White
+
+> **Note**: Trajectory and prediction are not displayed for person (face) detections
 
 ## System Requirements
 
@@ -68,4 +83,4 @@ python main.py
 
 ---
 
-*Built with PyQt5 & OpenCV*
+*Built with PyQt5 & YOLO26n*

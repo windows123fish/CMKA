@@ -25,7 +25,7 @@ except ImportError:
 
 from PyQt5.QtWidgets import (QApplication, QMainWindow, QWidget, QVBoxLayout, QHBoxLayout, 
                             QLabel, QLineEdit, QPushButton, QListWidget, QListWidgetItem, 
-                            QMessageBox, QDialog, QCheckBox, QScrollArea)
+                            QMessageBox, QDialog, QCheckBox, QScrollArea, QGroupBox)
 from PyQt5.QtCore import Qt, QThread, pyqtSignal, QEvent
 from PyQt5.QtGui import QImage, QPixmap, QFont
 
@@ -88,69 +88,149 @@ def draw_rounded_rectangle(img, pt1, pt2, color, thickness=-1, radius=20):
 
 
 print("正在加载YOLO26n模型...")
-use_opencv_dnn = True
-net = None
+use_ultralytics = False
+model = None
 
 # 获取程序运行目录（兼容打包后的exe）
 if getattr(sys, 'frozen', False):
-    # 打包后的exe运行时
     base_path = os.path.dirname(sys.executable)
 else:
-    # 源码运行时
     base_path = os.path.dirname(os.path.abspath(__file__))
 
-if use_opencv_dnn:
-    # 尝试加载ONNX模型文件
-    onnx_model_path = os.path.join(base_path, 'yolo26n.onnx')
-    cfg_model_path = os.path.join(base_path, 'yolo26.cfg')
-    weights_model_path = os.path.join(base_path, 'yolo26n.weights')
-    pt_model_path = os.path.join(base_path, 'yolo26n.pt')
-    
-    if os.path.exists(onnx_model_path):
-        try:
-            net = cv2.dnn.readNet(onnx_model_path)
-            print(f"YOLO26n模型加载成功！(ONNX格式: {onnx_model_path})")
-        except Exception as e:
-            print(f"ONNX模型加载失败: {e}")
-    elif os.path.exists(pt_model_path) and os.path.exists(cfg_model_path):
-        try:
-            # 尝试使用 cfg 和 weights 加载
-            net = cv2.dnn.readNetFromDarknet(cfg_model_path, pt_model_path)
-            print(f"YOLO26n模型加载成功！(Darknet格式)")
-        except Exception as e:
-            print(f"Darknet模型加载失败: {e}")
-            print("提示: 请将模型转换为 ONNX 格式或提供 .weights 文件")
-    elif os.path.exists(weights_model_path) and os.path.exists(cfg_model_path):
-        try:
-            net = cv2.dnn.readNetFromDarknet(cfg_model_path, weights_model_path)
-            print(f"YOLO26n模型加载成功！(Darknet格式)")
-        except Exception as e:
-            print(f"Darknet模型加载失败: {e}")
-    else:
-        print("警告: 未找到YOLO26n模型文件")
-        print(f"模型目录: {base_path}")
-        print("程序将以仅显示视频模式运行（无检测功能）...")
+pt_model_path = os.path.join(base_path, 'yolo26n.pt')
 
-    classes = {i: name for i, name in enumerate([
-        'person', 'bicycle', 'car', 'motorbike', 'aeroplane', 'bus', 'train', 'truck', 'boat',
-        'traffic light', 'fire hydrant', 'stop sign', 'parking meter', 'bench', 'bird', 'cat',
-        'dog', 'horse', 'sheep', 'cow', 'elephant', 'bear', 'zebra', 'giraffe', 'backpack',
-        'umbrella', 'handbag', 'tie', 'suitcase', 'frisbee', 'skis', 'snowboard', 'sports ball',
-        'kite', 'baseball bat', 'baseball glove', 'skateboard', 'surfboard', 'tennis racket',
-        'bottle', 'wine glass', 'cup', 'fork', 'knife', 'spoon', 'bowl', 'banana', 'apple',
-        'sandwich', 'orange', 'broccoli', 'carrot', 'hot dog', 'pizza', 'donut', 'cake', 'chair',
-        'sofa', 'pottedplant', 'bed', 'diningtable', 'toilet', 'tvmonitor', 'laptop', 'mouse',
-        'remote', 'keyboard', 'cell phone', 'microwave', 'oven', 'toaster', 'sink', 'refrigerator',
-        'book', 'clock', 'vase', 'scissors', 'teddy bear', 'hair drier', 'toothbrush'
-    ])}
-else:
+# 使用 Ultralytics
+try:
     from ultralytics import YOLO
-    model = YOLO('yolo26n.pt')
-    print("YOLO26n模型加载成功！")
-    classes = model.names
+    if os.path.exists(pt_model_path):
+        model = YOLO(pt_model_path)
+        use_ultralytics = True
+        print(f"YOLO26n模型加载成功！(Ultralytics格式: {pt_model_path})")
+        classes = model.names
+    else:
+        print(f"警告: 未找到模型文件: {pt_model_path}")
+        print("程序将以仅显示视频模式运行（无检测功能）...")
+except ImportError:
+    print("未安装 ultralytics 库")
+    print("请运行: pip install ultralytics")
+    sys.exit(1)
+except Exception as e:
+    print(f"Ultralytics 加载失败: {e}")
+    print("程序将以仅显示视频模式运行（无检测功能）...")
 
-use_ultralytics = False
+# COCO 类别名称
+classes = {i: name for i, name in enumerate([
+    'person', 'bicycle', 'car', 'motorbike', 'aeroplane', 'bus', 'train', 'truck', 'boat',
+    'traffic light', 'fire hydrant', 'stop sign', 'parking meter', 'bench', 'bird', 'cat',
+    'dog', 'horse', 'sheep', 'cow', 'elephant', 'bear', 'zebra', 'giraffe', 'backpack',
+    'umbrella', 'handbag', 'tie', 'suitcase', 'frisbee', 'skis', 'snowboard', 'sports ball',
+    'kite', 'baseball bat', 'baseball glove', 'skateboard', 'surfboard', 'tennis racket',
+    'bottle', 'wine glass', 'cup', 'fork', 'knife', 'spoon', 'bowl', 'banana', 'apple',
+    'sandwich', 'orange', 'broccoli', 'carrot', 'hot dog', 'pizza', 'donut', 'cake', 'chair',
+    'sofa', 'pottedplant', 'bed', 'diningtable', 'toilet', 'tvmonitor', 'laptop', 'mouse',
+    'remote', 'keyboard', 'cell phone', 'microwave', 'oven', 'toaster', 'sink', 'refrigerator',
+    'book', 'clock', 'vase', 'scissors', 'teddy bear', 'hair drier', 'toothbrush'
+])}
 disabled_classes = set()
+
+# 轨迹跟踪设置
+show_trajectory = True
+show_prediction = True
+trajectory_color = (0, 0, 255)  # BGR格式，红色
+prediction_color = (0, 255, 255)  # BGR格式，黄色
+
+
+class TrackedObject:
+    def __init__(self, track_id, x, y, w, h, class_id, confidence):
+        self.track_id = track_id
+        self.x = x
+        self.y = y
+        self.w = w
+        self.h = h
+        self.class_id = class_id
+        self.confidence = confidence
+        self.trajectory = [(x + w//2, y + h//2)]
+        self.missing_frames = 0
+        self.max_missing = 10
+    
+    def update(self, x, y, w, h, confidence):
+        self.x = x
+        self.y = y
+        self.w = w
+        self.h = h
+        self.confidence = confidence
+        self.trajectory.append((x + w//2, y + h//2))
+        self.missing_frames = 0
+        
+        if len(self.trajectory) > 50:
+            self.trajectory = self.trajectory[-50:]
+    
+    def predict_next_position(self):
+        if len(self.trajectory) >= 2:
+            x1, y1 = self.trajectory[-1]
+            x2, y2 = self.trajectory[-2]
+            dx = x1 - x2
+            dy = y1 - y2
+            return (x1 + dx, y1 + dy)
+        return None
+    
+    def is_lost(self):
+        return self.missing_frames >= self.max_missing
+
+
+class ObjectTracker:
+    def __init__(self):
+        self.tracked_objects = []
+        self.next_track_id = 1
+        self.max_iou_distance = 0.3
+    
+    def iou(self, box1, box2):
+        x1, y1, w1, h1 = box1
+        x2, y2, w2, h2 = box2
+        
+        xi1 = max(x1, x2)
+        yi1 = max(y1, y2)
+        xi2 = min(x1 + w1, x2 + w2)
+        yi2 = min(y1 + h1, y2 + h2)
+        
+        inter_area = max(0, xi2 - xi1) * max(0, yi2 - yi1)
+        box1_area = w1 * h1
+        box2_area = w2 * h2
+        
+        return inter_area / (box1_area + box2_area - inter_area) if (box1_area + box2_area - inter_area) > 0 else 0
+    
+    def update(self, detections):
+        new_tracked = []
+        
+        for det in detections:
+            x, y, w, h, class_id, confidence = det
+            matched = False
+            
+            for obj in self.tracked_objects:
+                if obj.class_id == class_id:
+                    iou_dist = self.iou((x, y, w, h), (obj.x, obj.y, obj.w, obj.h))
+                    if iou_dist > self.max_iou_distance:
+                        obj.update(x, y, w, h, confidence)
+                        new_tracked.append(obj)
+                        matched = True
+                        break
+            
+            if not matched:
+                new_obj = TrackedObject(self.next_track_id, x, y, w, h, class_id, confidence)
+                self.next_track_id += 1
+                new_tracked.append(new_obj)
+        
+        for obj in self.tracked_objects:
+            if obj not in new_tracked:
+                obj.missing_frames += 1
+        
+        self.tracked_objects = [obj for obj in self.tracked_objects if not obj.is_lost()]
+        self.tracked_objects.extend([obj for obj in new_tracked if obj not in self.tracked_objects])
+        
+        return self.tracked_objects
+    
+    def get_all_tracks(self):
+        return self.tracked_objects
 
 
 class LicenseDialog(QDialog):
@@ -317,60 +397,23 @@ class CameraSelectDialog(QDialog):
                 cap = cv2.VideoCapture(i, cv2.CAP_DSHOW)  # 使用 DirectShow 加快检测
                 if cap.isOpened():
                     self.available_cameras.append(i)
-                
-                name = None
-                try:
-                    name = cap.get(cv2.CAP_PROP_DEVICE_NAME)
-                    if name in (None, 0, ""):
-                        name = None
-                    else:
-                        name = str(name)
-                        try:
-                            name = name.encode('latin1').decode('gbk')
-                        except:
-                            try:
-                                name = name.encode('latin1').decode('utf-8')
-                            except:
-                                pass
-                except:
-                    name = None
-                
-                try:
-                    backend = cap.get(cv2.CAP_PROP_BACKEND)
-                    backend_name = {
-                        cv2.CAP_ANY: "Any",
-                        cv2.CAP_VFW: "VFW",
-                        cv2.CAP_V4L: "V4L",
-                        cv2.CAP_V4L2: "V4L2",
-                        cv2.CAP_FIREWIRE: "FireWire",
-                        cv2.CAP_IEEE1394: "IEEE1394",
-                        cv2.CAP_QT: "QT",
-                        cv2.CAP_GSTREAMER: "GStreamer",
-                        cv2.CAP_FFMPEG: "FFMPEG",
-                        cv2.CAP_DSHOW: "DirectShow",
-                        cv2.CAP_MSMF: "Media Foundation",
-                        cv2.CAP_WINRT: "Windows Runtime"
-                    }.get(backend, f"Backend {backend}")
                     
-                    width = cap.get(cv2.CAP_PROP_FRAME_WIDTH)
-                    height = cap.get(cv2.CAP_PROP_FRAME_HEIGHT)
-                    fps = cap.get(cv2.CAP_PROP_FPS)
-                    
-                    res_info = f" ({int(width)}x{int(height)}"
-                    if fps > 0:
-                        res_info += f" @ {int(fps)}fps"
-                    res_info += ")"
-                    
-                    display_name = name if name else backend_name
-                except:
+                    # 简化显示信息，避免获取设备名称导致卡死
                     display_name = f"摄像头 {i}"
-                    res_info = ""
-                
-                camera_info_str = f"{i}: {display_name}{res_info}"
-                item = QListWidgetItem(camera_info_str)
-                self.camera_list.addItem(item)
-                cap.release()
-                print(f"发现摄像头 {i}: {display_name}{res_info}")
+                    try:
+                        width = cap.get(cv2.CAP_PROP_FRAME_WIDTH)
+                        height = cap.get(cv2.CAP_PROP_FRAME_HEIGHT)
+                        res_info = f" ({int(width)}x{int(height)})" if width > 0 and height > 0 else ""
+                    except:
+                        res_info = ""
+                    
+                    camera_info_str = f"{i}: {display_name}{res_info}"
+                    item = QListWidgetItem(camera_info_str)
+                    self.camera_list.addItem(item)
+                    
+                    # 立即释放摄像头资源
+                    cap.release()
+                    print(f"发现摄像头 {i}: {display_name}{res_info}")
             except Exception as e:
                 print(f"检测摄像头 {i} 时出错: {e}")
                 continue
@@ -486,6 +529,213 @@ class DisableClassDialog(QDialog):
         self.accept()
 
 
+class TrackSettingsDialog(QDialog):
+    def __init__(self, parent=None):
+        super().__init__(parent)
+        self.setWindowTitle("轨迹设置")
+        self.setMinimumSize(500, 450)
+        self.setStyleSheet("background-color: white;")
+        
+        layout = QVBoxLayout()
+        
+        header_widget = QWidget()
+        header_layout = QHBoxLayout(header_widget)
+        header_widget.setStyleSheet("background-color: #20B2AA; border-radius: 15px;")
+        
+        title_label = QLabel("轨迹设置")
+        title_label.setFont(QFont("Microsoft YaHei", 20, QFont.Bold))
+        title_label.setStyleSheet("color: white;")
+        header_layout.addWidget(title_label, Qt.AlignLeft)
+        
+        close_button = QPushButton("×")
+        close_button.setFixedSize(40, 40)
+        close_button.setStyleSheet("background-color: #48D1CC; border-radius: 20px; color: white; font-size: 24px;")
+        close_button.clicked.connect(self.close)
+        header_layout.addWidget(close_button, Qt.AlignRight)
+        
+        layout.addWidget(header_widget)
+        
+        scroll = QScrollArea()
+        scroll.setWidgetResizable(True)
+        scroll.setStyleSheet("""
+            QScrollArea { 
+                border: 2px solid #20B2AA; 
+                border-radius: 10px;
+                background-color: #E0FFFF;
+            }
+        """)
+        
+        scroll_content = QWidget()
+        scroll_layout = QVBoxLayout(scroll_content)
+        
+        self.trajectory_checkbox = QCheckBox("显示轨迹线")
+        self.trajectory_checkbox.setFont(QFont("Microsoft YaHei", 14))
+        self.trajectory_checkbox.setStyleSheet("padding: 15px;")
+        self.trajectory_checkbox.setChecked(show_trajectory)
+        self.trajectory_checkbox.stateChanged.connect(self.on_trajectory_toggle)
+        scroll_layout.addWidget(self.trajectory_checkbox)
+        
+        self.prediction_checkbox = QCheckBox("显示预测方向")
+        self.prediction_checkbox.setFont(QFont("Microsoft YaHei", 14))
+        self.prediction_checkbox.setStyleSheet("padding: 15px;")
+        self.prediction_checkbox.setChecked(show_prediction)
+        self.prediction_checkbox.stateChanged.connect(self.on_prediction_toggle)
+        scroll_layout.addWidget(self.prediction_checkbox)
+        
+        trajectory_color_group = QGroupBox("轨迹线颜色")
+        trajectory_color_group.setFont(QFont("Microsoft YaHei", 12, QFont.Bold))
+        trajectory_color_group.setStyleSheet("margin: 10px; padding: 15px;")
+        color_layout1 = QVBoxLayout(trajectory_color_group)
+        
+        preset_layout1 = QHBoxLayout()
+        preset_layout1.setSpacing(10)
+        
+        self.trajectory_color_buttons = []
+        trajectory_colors = [
+            ("红色", (0, 0, 255)),
+            ("蓝色", (255, 0, 0)),
+            ("绿色", (0, 255, 0)),
+            ("黄色", (0, 255, 255)),
+            ("紫色", (128, 0, 128)),
+            ("白色", (255, 255, 255)),
+        ]
+        
+        for name, color in trajectory_colors:
+            btn = QPushButton(name)
+            btn.setFixedSize(70, 40)
+            btn.setFont(QFont("Microsoft YaHei", 11))
+            btn.setStyleSheet(f"background-color: rgb({color[0]}, {color[1]}, {color[2]}); color: {'black' if sum(color) > 380 else 'white'}; border-radius: 5px; border: 2px solid #ccc;")
+            btn.clicked.connect(lambda checked, c=color: self.set_trajectory_color(c))
+            self.trajectory_color_buttons.append((btn, color))
+            preset_layout1.addWidget(btn)
+        
+        color_layout1.addLayout(preset_layout1)
+        
+        custom_color_layout1 = QHBoxLayout()
+        custom_color_label1 = QLabel("自定义颜色:")
+        custom_color_label1.setFont(QFont("Microsoft YaHei", 11))
+        custom_color_layout1.addWidget(custom_color_label1)
+        
+        self.custom_trajectory_button = QPushButton()
+        self.custom_trajectory_button.setFixedSize(40, 40)
+        self.update_custom_button_color(self.custom_trajectory_button, trajectory_color)
+        self.custom_trajectory_button.clicked.connect(self.choose_custom_trajectory_color)
+        custom_color_layout1.addWidget(self.custom_trajectory_button)
+        
+        custom_color_layout1.addStretch(1)
+        color_layout1.addLayout(custom_color_layout1)
+        
+        scroll_layout.addWidget(trajectory_color_group)
+        
+        prediction_color_group = QGroupBox("预测方向颜色")
+        prediction_color_group.setFont(QFont("Microsoft YaHei", 12, QFont.Bold))
+        prediction_color_group.setStyleSheet("margin: 10px; padding: 15px;")
+        color_layout2 = QVBoxLayout(prediction_color_group)
+        
+        preset_layout2 = QHBoxLayout()
+        preset_layout2.setSpacing(10)
+        
+        self.prediction_color_buttons = []
+        prediction_colors = [
+            ("黄色", (0, 255, 255)),
+            ("红色", (0, 0, 255)),
+            ("蓝色", (255, 0, 0)),
+            ("绿色", (0, 255, 0)),
+            ("紫色", (128, 0, 128)),
+            ("白色", (255, 255, 255)),
+        ]
+        
+        for name, color in prediction_colors:
+            btn = QPushButton(name)
+            btn.setFixedSize(70, 40)
+            btn.setFont(QFont("Microsoft YaHei", 11))
+            btn.setStyleSheet(f"background-color: rgb({color[0]}, {color[1]}, {color[2]}); color: {'black' if sum(color) > 380 else 'white'}; border-radius: 5px; border: 2px solid #ccc;")
+            btn.clicked.connect(lambda checked, c=color: self.set_prediction_color(c))
+            self.prediction_color_buttons.append((btn, color))
+            preset_layout2.addWidget(btn)
+        
+        color_layout2.addLayout(preset_layout2)
+        
+        custom_color_layout2 = QHBoxLayout()
+        custom_color_label2 = QLabel("自定义颜色:")
+        custom_color_label2.setFont(QFont("Microsoft YaHei", 11))
+        custom_color_layout2.addWidget(custom_color_label2)
+        
+        self.custom_prediction_button = QPushButton()
+        self.custom_prediction_button.setFixedSize(40, 40)
+        self.update_custom_button_color(self.custom_prediction_button, prediction_color)
+        self.custom_prediction_button.clicked.connect(self.choose_custom_prediction_color)
+        custom_color_layout2.addWidget(self.custom_prediction_button)
+        
+        custom_color_layout2.addStretch(1)
+        color_layout2.addLayout(custom_color_layout2)
+        
+        scroll_layout.addWidget(prediction_color_group)
+        
+        scroll.setWidget(scroll_content)
+        layout.addWidget(scroll)
+        
+        info_label = QLabel("提示：点击颜色按钮后立即生效，无需保存")
+        info_label.setFont(QFont("Microsoft YaHei", 10))
+        info_label.setStyleSheet("color: #666; text-align: center; padding: 10px;")
+        info_label.setAlignment(Qt.AlignCenter)
+        layout.addWidget(info_label)
+        
+        self.setLayout(layout)
+    
+    def update_custom_button_color(self, button, color):
+        r, g, b = color
+        button.setStyleSheet(f"background-color: rgb({r}, {g}, {b}); border-radius: 5px; border: 2px solid #20B2AA;")
+    
+    def on_trajectory_toggle(self, state):
+        global show_trajectory
+        show_trajectory = (state == Qt.Checked)
+    
+    def on_prediction_toggle(self, state):
+        global show_prediction
+        show_prediction = (state == Qt.Checked)
+    
+    def set_trajectory_color(self, color):
+        global trajectory_color
+        trajectory_color = color
+        self.update_custom_button_color(self.custom_trajectory_button, color)
+    
+    def set_prediction_color(self, color):
+        global prediction_color
+        prediction_color = color
+        self.update_custom_button_color(self.custom_prediction_button, color)
+    
+    def choose_custom_trajectory_color(self):
+        try:
+            from PyQt5.QtWidgets import QColorDialog
+            from PyQt5.QtGui import QColor
+            
+            r, g, b = trajectory_color
+            qcolor = QColor(r, g, b)
+            color = QColorDialog.getColor(qcolor, self, "选择轨迹线颜色")
+            
+            if color.isValid():
+                new_color = (color.red(), color.green(), color.blue())
+                self.set_trajectory_color(new_color)
+        except Exception as e:
+            print(f"选择轨迹线颜色错误: {e}")
+    
+    def choose_custom_prediction_color(self):
+        try:
+            from PyQt5.QtWidgets import QColorDialog
+            from PyQt5.QtGui import QColor
+            
+            r, g, b = prediction_color
+            qcolor = QColor(r, g, b)
+            color = QColorDialog.getColor(qcolor, self, "选择预测方向颜色")
+            
+            if color.isValid():
+                new_color = (color.red(), color.green(), color.blue())
+                self.set_prediction_color(new_color)
+        except Exception as e:
+            print(f"选择预测方向颜色错误: {e}")
+
+
 class VideoThread(QThread):
     change_pixmap_signal = pyqtSignal(QImage)
     
@@ -493,82 +743,118 @@ class VideoThread(QThread):
         super().__init__()
         self.camera_id = camera_id
         self.running = True
+        self.tracker = ObjectTracker()
     
     def run(self):
-        cap = cv2.VideoCapture(self.camera_id)
+        cap = cv2.VideoCapture(self.camera_id, cv2.CAP_DSHOW)  # 使用 DirectShow
+        if not cap.isOpened():
+            print(f"无法打开摄像头 {self.camera_id}")
+            return
+            
         while self.running:
-            ret, frame = cap.read()
-            if ret:
-                if use_ultralytics and 'model' in globals():
-                    results = model(frame, conf=0.5, iou=0.45)
-
-                    for result in results:
-                        for box in result.boxes:
-                            x1, y1, x2, y2 = map(int, box.xyxy[0])
-                            confidence = float(box.conf[0])
-                            class_id = int(box.cls[0])
-                            class_name = classes[class_id]
-
-                            if class_name in disabled_classes:
-                                continue
-
-                            cv2.rectangle(frame, (x1, y1), (x2, y2), (0, 255, 0), 2)
-                            label = f"{class_name}: {confidence:.2f}"
-                            frame = put_chinese_text(frame, label, (x1, y1 - 10), font_size=14, color=(0, 255, 0))
-                elif use_opencv_dnn and net is not None:
-                    # OpenCV DNN模式 - 执行目标检测
-                    blob = cv2.dnn.blobFromImage(frame, 1 / 255.0, (416, 416), swapRB=True, crop=False)
-                    net.setInput(blob)
+            try:
+                ret, frame = cap.read()
+                if not ret:
+                    continue
                     
-                    layer_names = net.getLayerNames()
+                detections = []
+                tracked_objects = []
+                
+                if use_ultralytics and model is not None:
                     try:
-                        output_layers = [layer_names[i - 1] for i in net.getUnconnectedOutLayers()]
-                    except TypeError:
-                        output_layers = [layer_names[i[0] - 1] for i in net.getUnconnectedOutLayers()]
-                    
-                    outputs = net.forward(output_layers)
-                    
-                    boxes = []
-                    confidences = []
-                    class_ids = []
-                    
-                    for output in outputs:
-                        for detection in output:
-                            scores = detection[5:]
-                            class_id = np.argmax(scores)
-                            confidence = scores[class_id]
-                            
-                            if confidence > 0.5:
-                                center_x = int(detection[0] * frame.shape[1])
-                                center_y = int(detection[1] * frame.shape[0])
-                                width = int(detection[2] * frame.shape[1])
-                                height = int(detection[3] * frame.shape[0])
+                        results = model(frame, conf=0.5, iou=0.45, verbose=False)
+
+                        for result in results:
+                            for box in result.boxes:
+                                x1, y1, x2, y2 = map(int, box.xyxy[0])
+                                w = x2 - x1
+                                h = y2 - y1
+                                confidence = float(box.conf[0])
+                                class_id = int(box.cls[0])
+                                class_name = classes[class_id]
+
+                                if class_name in disabled_classes:
+                                    continue
+
+                                detections.append((x1, y1, w, h, class_id, confidence))
                                 
-                                x = int(center_x - width / 2)
-                                y = int(center_y - height / 2)
-                                
-                                boxes.append([x, y, width, height])
-                                confidences.append(float(confidence))
-                                class_ids.append(class_id)
+                    except Exception as e:
+                        print(f"检测错误: {e}")
+                
+                tracked_objects = self.tracker.update(detections)
+                
+                for obj in tracked_objects:
+                    x, y, w, h = obj.x, obj.y, obj.w, obj.h
+                    class_id = obj.class_id
+                    track_id = obj.track_id
                     
-                    indices = cv2.dnn.NMSBoxes(boxes, confidences, 0.5, 0.4)
-                    
-                    if len(indices) > 0:
-                        for i in indices.flatten():
-                            x, y, w, h = boxes[i]
-                            cv2.rectangle(frame, (x, y), (x + w, y + h), (0, 255, 0), 2)
-                            
-                            if class_ids[i] in classes:
-                                label = f"{classes[class_ids[i]]}: {confidences[i]:.2f}"
-                                frame = put_chinese_text(frame, label, (x, y - 10), font_size=14, color=(0, 255, 0))
+                    if 0 <= class_id < len(classes):
+                        class_name = classes[class_id]
+                        
+                        cv2.rectangle(frame, (x, y), (x + w, y + h), (0, 255, 0), 2)
+                        
+                        label = f"ID:{track_id} {class_name}: {obj.confidence:.2f}"
+                        frame = put_chinese_text(frame, label, (x, y - 10), font_size=14, color=(0, 255, 0))
+                        
+                        if show_trajectory and len(obj.trajectory) > 1 and class_name != 'person':
+                            for i in range(1, len(obj.trajectory)):
+                                pt1 = obj.trajectory[i-1]
+                                pt2 = obj.trajectory[i]
+                                cv2.line(frame, pt1, pt2, trajectory_color, 2)
+                        
+                        if show_prediction and class_name != 'person':
+                            predicted_pos = obj.predict_next_position()
+                            if predicted_pos is not None:
+                                current_pos = (x + w // 2, y + h // 2)
+                                pred_x, pred_y = int(predicted_pos[0]), int(predicted_pos[1])
+                                self.draw_direction_arrow(frame, current_pos, (pred_x, pred_y), prediction_color)
                 
                 rgb_image = cv2.cvtColor(frame, cv2.COLOR_BGR2RGB)
                 h, w, ch = rgb_image.shape
                 bytes_per_line = ch * w
                 convert_to_Qt_format = QImage(rgb_image.data, w, h, bytes_per_line, QImage.Format_RGB888)
-                self.change_pixmap_signal.emit(convert_to_Qt_format)
+                self.change_pixmap_signal.emit(convert_to_Qt_format.copy())  # 使用 copy() 避免内存问题
+            except Exception as e:
+                print(f"视频处理错误: {e}")
+                continue
         
         cap.release()
+        print("摄像头已释放")
+    
+    def draw_direction_arrow(self, frame, start_point, end_point, color):
+        import math
+        
+        start_x, start_y = start_point
+        end_x, end_y = end_point
+        
+        dx = end_x - start_x
+        dy = end_y - start_y
+        distance = math.sqrt(dx * dx + dy * dy)
+        
+        if distance < 5:
+            return
+        
+        arrow_length = min(distance, 30)
+        
+        angle = math.atan2(dy, dx)
+        
+        end_x = start_x + int(arrow_length * math.cos(angle))
+        end_y = start_y + int(arrow_length * math.sin(angle))
+        
+        cv2.line(frame, (start_x, start_y), (end_x, end_y), color, 3)
+        
+        arrow_head_length = 10
+        angle1 = angle + math.pi / 6
+        angle2 = angle - math.pi / 6
+        
+        x1 = end_x - int(arrow_head_length * math.cos(angle1))
+        y1 = end_y - int(arrow_head_length * math.sin(angle1))
+        
+        x2 = end_x - int(arrow_head_length * math.cos(angle2))
+        y2 = end_y - int(arrow_head_length * math.sin(angle2))
+        
+        cv2.line(frame, (end_x, end_y), (x1, y1), color, 3)
+        cv2.line(frame, (end_x, end_y), (x2, y2), color, 3)
     
     def stop(self):
         self.running = False
@@ -658,6 +944,12 @@ class MainWindow(QMainWindow):
         self.disable_button.clicked.connect(self.open_disable_dialog)
         control_layout.addWidget(self.disable_button)
         
+        self.track_button = QPushButton("轨迹设置")
+        self.track_button.setFont(QFont("Microsoft YaHei", 14, QFont.Bold))
+        self.track_button.setStyleSheet("background-color: #20B2AA; color: white; border-radius: 10px; padding: 12px 24px;")
+        self.track_button.clicked.connect(self.open_track_settings)
+        control_layout.addWidget(self.track_button)
+        
         content_layout.addLayout(control_layout)
         main_layout.addWidget(content_widget)
         
@@ -725,6 +1017,10 @@ class MainWindow(QMainWindow):
     def open_disable_dialog(self):
         disable_dialog = DisableClassDialog(self)
         disable_dialog.exec_()
+    
+    def open_track_settings(self):
+        track_dialog = TrackSettingsDialog(self)
+        track_dialog.exec_()
     
     def closeEvent(self, event):
         self.stop_detection()

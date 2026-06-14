@@ -4,7 +4,6 @@ import sys
 import cv2
 import numpy as np
 import traceback
-
 try:
     import PyQt5
     if PyQt5.__file__:
@@ -92,11 +91,20 @@ print("正在加载YOLO26n模型...")
 use_opencv_dnn = True
 net = None
 
+# 获取程序运行目录（兼容打包后的exe）
+if getattr(sys, 'frozen', False):
+    # 打包后的exe运行时
+    base_path = os.path.dirname(sys.executable)
+else:
+    # 源码运行时
+    base_path = os.path.dirname(os.path.abspath(__file__))
+
 if use_opencv_dnn:
     # 尝试加载ONNX模型文件
-    onnx_model_path = os.path.join(os.path.dirname(os.path.abspath(__file__)), 'yolo26n.onnx')
-    cfg_model_path = os.path.join(os.path.dirname(os.path.abspath(__file__)), 'yolo26.cfg')
-    weights_model_path = os.path.join(os.path.dirname(os.path.abspath(__file__)), 'yolo26.weights')
+    onnx_model_path = os.path.join(base_path, 'yolo26n.onnx')
+    cfg_model_path = os.path.join(base_path, 'yolo26.cfg')
+    weights_model_path = os.path.join(base_path, 'yolo26n.weights')
+    pt_model_path = os.path.join(base_path, 'yolo26n.pt')
     
     if os.path.exists(onnx_model_path):
         try:
@@ -104,16 +112,24 @@ if use_opencv_dnn:
             print(f"YOLO26n模型加载成功！(ONNX格式: {onnx_model_path})")
         except Exception as e:
             print(f"ONNX模型加载失败: {e}")
-    elif os.path.exists(weights_model_path):
+    elif os.path.exists(pt_model_path) and os.path.exists(cfg_model_path):
+        try:
+            # 尝试使用 cfg 和 weights 加载
+            net = cv2.dnn.readNetFromDarknet(cfg_model_path, pt_model_path)
+            print(f"YOLO26n模型加载成功！(Darknet格式)")
+        except Exception as e:
+            print(f"Darknet模型加载失败: {e}")
+            print("提示: 请将模型转换为 ONNX 格式或提供 .weights 文件")
+    elif os.path.exists(weights_model_path) and os.path.exists(cfg_model_path):
         try:
             net = cv2.dnn.readNetFromDarknet(cfg_model_path, weights_model_path)
             print(f"YOLO26n模型加载成功！(Darknet格式)")
         except Exception as e:
             print(f"Darknet模型加载失败: {e}")
     else:
-        print("警告: 未找到YOLO26n模型文件 (.onnx 或 .weights)")
-        print("提示: 请将模型文件重命名为 yolo26n.onnx 放置在程序目录下")
-        print("程序将以仅显示视频模式运行...")
+        print("警告: 未找到YOLO26n模型文件")
+        print(f"模型目录: {base_path}")
+        print("程序将以仅显示视频模式运行（无检测功能）...")
 
     classes = {i: name for i, name in enumerate([
         'person', 'bicycle', 'car', 'motorbike', 'aeroplane', 'bus', 'train', 'truck', 'boat',
@@ -292,14 +308,15 @@ class CameraSelectDialog(QDialog):
         self.detect_cameras()
     
     def detect_cameras(self):
-        max_cameras = 10
+        max_cameras = 3  # 减少检测数量，避免卡死
         self.available_cameras = []
         
         print("正在检测可用摄像头...")
         for i in range(max_cameras):
-            cap = cv2.VideoCapture(i)
-            if cap.isOpened():
-                self.available_cameras.append(i)
+            try:
+                cap = cv2.VideoCapture(i, cv2.CAP_DSHOW)  # 使用 DirectShow 加快检测
+                if cap.isOpened():
+                    self.available_cameras.append(i)
                 
                 name = None
                 try:
@@ -354,6 +371,9 @@ class CameraSelectDialog(QDialog):
                 self.camera_list.addItem(item)
                 cap.release()
                 print(f"发现摄像头 {i}: {display_name}{res_info}")
+            except Exception as e:
+                print(f"检测摄像头 {i} 时出错: {e}")
+                continue
         
         if not self.available_cameras:
             QMessageBox.critical(self, "错误", "未找到可用摄像头")

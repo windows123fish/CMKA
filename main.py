@@ -9,7 +9,7 @@ try:
     if PyQt5.__file__:
         pyqt5_path = os.path.dirname(PyQt5.__file__)
         for qt_folder in ['Qt', 'Qt5']:
-            qt_plugins_path = os.path.join(pyqt5_path, qt_folder, 'plugins')
+            qt_plugins_path = os.path.join(pyqt5_path, qt_folder, 'plugins', 'platforms')
             if os.path.exists(qt_plugins_path):
                 os.environ['QT_QPA_PLATFORM_PLUGIN_PATH'] = qt_plugins_path
                 print(f"设置Qt平台插件路径: {qt_plugins_path}")
@@ -94,10 +94,16 @@ model = None
 # 获取程序运行目录（兼容打包后的exe）
 if getattr(sys, 'frozen', False):
     base_path = os.path.dirname(sys.executable)
+    # 检查模型文件是否在当前目录，如果不在则检查 _internal 目录
+    pt_model_path = os.path.join(base_path, 'yolo26n.pt')
+    if not os.path.exists(pt_model_path):
+        internal_path = os.path.join(base_path, '_internal', 'yolo26n.pt')
+        if os.path.exists(internal_path):
+            pt_model_path = internal_path
+            base_path = os.path.join(base_path, '_internal')
 else:
     base_path = os.path.dirname(os.path.abspath(__file__))
-
-pt_model_path = os.path.join(base_path, 'yolo26n.pt')
+    pt_model_path = os.path.join(base_path, 'yolo26n.pt')
 
 # 使用 Ultralytics
 try:

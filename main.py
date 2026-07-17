@@ -10,6 +10,9 @@ import shutil
 import hashlib
 from collections import deque
 from urllib.parse import urlparse
+from PyQt5.QtWidgets import (QApplication, QMainWindow, QWidget, QVBoxLayout, QHBoxLayout,
+                            QLabel, QLineEdit, QPushButton, QListWidget, QListWidgetItem,
+                            QMessageBox, QDialog, QCheckBox, QScrollArea, QGroupBox, QComboBox)
 from PyQt5.QtCore import Qt, QThread, pyqtSignal, QEvent, QObject
 from PyQt5.QtGui import QImage, QPixmap, QFont
 from PyQt5.QtWidgets import (QApplication, QMainWindow, QWidget, QVBoxLayout, QHBoxLayout,
@@ -93,9 +96,6 @@ def draw_rounded_rectangle(img, pt1, pt2, color, thickness=-1, radius=20):
     return img
 
 
-# ==============================
-# 配置/日志/统计/模型工具函数
-# ==============================
 
 APP_CONFIG_FILENAME = "config.json"
 DEFAULT_CONFIG = {
@@ -110,7 +110,21 @@ DEFAULT_CONFIG = {
     "max_missing": 10,
     "iou_threshold": 0.25,
 }
+MODEL_LIST = [
+    "https://github.com/ultralytics/assets/releases/download/v8.3.0/yolov5n.pt",
+    "https://github.com/ultralytics/assets/releases/download/v8.3.0/yolov5s.pt",
+    "https://github.com/ultralytics/assets/releases/download/v8.3.0/yolov8n.pt",
+    "https://github.com/ultralytics/assets/releases/download/v8.3.0/yolov8s.pt",
+    "https://github.com/ultralytics/assets/releases/download/v8.3.0/yolov8m.pt",
+    "https://github.com/ultralytics/assets/releases/download/v8.3.0/yolov8l.pt",
+    "https://github.com/ultralytics/assets/releases/download/v8.3.0/yolov8x.pt",
+]
 
+def _model_name_from_url(url):
+    try:
+        return os.path.basename(urlparse(url).path)
+    except Exception:
+        return "model.pt"
 
 def resolve_base_path():
     if getattr(sys, 'frozen', False):
@@ -1027,6 +1041,229 @@ class TrackSettingsDialog(QDialog):
                 self.set_prediction_color(new_color)
         except Exception as e:
             print(f"选择预测方向颜色错误: {e}")
+
+
+class ModelManageDialog(QDialog):
+    def __init__(self, base_path, parent=None):
+        super().__init__(parent)
+        self.setWindowTitle("模型管理")
+        self.setFixedSize(620, 360)
+        self.setStyleSheet("background-color: white;")
+        self.base_path = base_path
+        self.pt_model_path = os.path.join(base_path, 'yolo26n.pt')
+
+        layout = QVBoxLayout()
+
+        header_widget = QWidget()
+        header_layout = QHBoxLayout(header_widget)
+        header_widget.setStyleSheet("background-color: #20B2AA; border-radius: 15px;")
+
+        title_label = QLabel("模型管理")
+        title_label.setFont(QFont("Microsoft YaHei", 20, QFont.Bold))
+        title_label.setStyleSheet("color: white;")
+        header_layout.addWidget(title_label, Qt.AlignLeft)
+
+        close_button = QPushButton("×")
+        close_button.setFixedSize(40, 40)
+        close_button.setStyleSheet("background-color: #48D1CC; color: white; border-radius: 15px; font-size: 24px;")
+        close_button.clicked.connect(self.reject)
+        header_layout.addWidget(close_button, Qt.AlignRight)
+
+        layout.addWidget(header_widget)
+
+        info_label = QLabel("选择模型后可直接下载，也可删除当前模型后重载其他模型。")
+        info_label.setFont(QFont("Microsoft YaHei", 12))
+        info_label.setStyleSheet("color: #404040; padding: 15px;")
+        info_label.setWordWrap(True)
+        info_label.setAlignment(Qt.AlignCenter)
+        layout.addWidget(info_label)
+
+        select_layout = QHBoxLayout()
+        select_label = QLabel("选择模型：")
+        select_label.setFont(QFont("Microsoft YaHei", 12))
+        select_layout.addWidget(select_label)
+
+        self.model_combo = QComboBox()
+        self.model_combo.setFont(QFont("Microsoft YaHei", 12))
+        self.model_combo.setMinimumWidth(340)
+        for url in MODEL_LIST:
+            self.model_combo.addItem(_model_name_from_url(url), url)
+        current_url = model_url_from_settings
+        index = self.model_combo.findData(current_url)
+        if index >= 0:
+            self.model_combo.setCurrentIndex(index)
+        select_layout.addWidget(self.model_combo)
+        layout.addLayout(select_layout)
+
+        self.status_label = QLabel("")
+        self.status_label.setFont(QFont("Microsoft YaHei", 11))
+        self.status_label.setStyleSheet("color: #666; padding: 0 15px 15px 15px;")
+        self.status_label.setWordWrap(True)
+        layout.addWidget(self.status_label)
+
+        button_layout = QHBoxLayout()
+        button_layout.setContentsMargins(15, 0, 15, 15)
+        button_layout.setSpacing(12)
+
+        delete_button = QPushButton("删除旧模型")
+        delete_button.setFont(QFont("Microsoft YaHei", 12, QFont.Bold))
+        delete_button.setStyleSheet("background-color: #FF69B4; color: white; border-radius: 10px; padding: 10px;")
+        delete_button.clicked.connect(self.delete_model)
+        button_layout.addWidget(delete_button)
+
+        download_button = QPushButton("下载模型")
+        download_button.setFont(QFont("Microsoft YaHei", 12, QFont.Bold))
+        download_button.setStyleSheet("background-color: #4682B4; color: white; border-radius: 10px; padding: 10px;")
+        download_button.clicked.connect(self.download_model_action)
+        button_layout.addWidget(download_button)
+
+        reload_button = QPushButton("重载模型")
+        reload_button.setFont(QFont("Microsoft YaHei", 12, QFont.Bold))
+        reload_button.setStyleSheet("background-color: #9370DB; color: white; border-radius: 10px; padding: 10px;")
+        reload_button.clicked.connect(self.reload_model_action)
+        button_layout.addWidget(reload_button)
+
+        layout.addLayout(button_layout)
+        self.setLayout(layout)
+        self.update_status()
+
+    def update_status(self):
+        exists = os.path.exists(self.pt_model_path)
+        text = f"模型路径：{self.pt_model_path}\n状态：{'存在' if exists else '未找到'}"
+        if exists:
+            try:
+                size = os.path.getsize(self.pt_model_path)
+                text += f"，大小：{size/1024/1024:.2f} MB"
+            except Exception:
+                pass
+        self.status_label.setText(text)
+
+    def delete_model(self):
+        if os.path.exists(self.pt_model_path):
+            try:
+                os.remove(self.pt_model_path)
+                QMessageBox.information(self, "成功", "已删除旧模型文件。")
+                self.update_status()
+            except Exception as e:
+                QMessageBox.critical(self, "错误", f"删除失败：{e}")
+        else:
+            QMessageBox.information(self, "提示", "当前没有可删除的模型文件。")
+
+    def download_model_action(self):
+        QApplication.setOverrideCursor(Qt.WaitCursor)
+        try:
+            path = download_new_model(self.base_path, model_url_from_settings)
+            if path:
+                QMessageBox.information(self, "成功", f"模型已下载：{path}")
+                self.update_status()
+            else:
+                QMessageBox.warning(self, "失败", "模型下载失败，未保存文件。")
+        except Exception as e:
+            QMessageBox.critical(self, "错误", f"下载异常：{e}")
+        finally:
+            QApplication.restoreOverrideCursor()
+
+    def reload_model_action(self):
+        QApplication.setOverrideCursor(Qt.WaitCursor)
+        try:
+            ok = reload_model(pt_model_path)
+            if ok:
+                QMessageBox.information(self, "成功", "模型已重载。")
+            else:
+                QMessageBox.warning(self, "失败", "模型重载失败，仍使用旧状态。")
+        except Exception as e:
+            QMessageBox.critical(self, "错误", f"重载异常：{e}")
+        finally:
+            QApplication.restoreOverrideCursor()
+
+
+class LogExportDialog(QDialog):
+    def __init__(self, base_path, parent=None):
+        super().__init__(parent)
+        self.setWindowTitle("日志导出")
+        self.setFixedSize(520, 260)
+        self.setStyleSheet("background-color: white;")
+        self.base_path = base_path
+        self.log_path = build_log_path(base_path)
+        self.exporting = False
+
+        layout = QVBoxLayout()
+
+        header_widget = QWidget()
+        header_layout = QHBoxLayout(header_widget)
+        header_widget.setStyleSheet("background-color: #20B2AA; border-radius: 15px;")
+
+        title_label = QLabel("日志导出")
+        title_label.setFont(QFont("Microsoft YaHei", 20, QFont.Bold))
+        title_label.setStyleSheet("color: white;")
+        header_layout.addWidget(title_label, Qt.AlignLeft)
+
+        close_button = QPushButton("×")
+        close_button.setFixedSize(40, 40)
+        close_button.setStyleSheet("background-color: #48D1CC; color: white; border-radius: 15px; font-size: 24px;")
+        close_button.clicked.connect(self.reject)
+        header_layout.addWidget(close_button, Qt.AlignRight)
+
+        layout.addWidget(header_widget)
+
+        self.path_label = QLabel(f"日志文件：{self.log_path}")
+        self.path_label.setFont(QFont("Microsoft YaHei", 11))
+        self.path_label.setStyleSheet("color: #404040; padding: 15px;")
+        self.path_label.setWordWrap(True)
+        layout.addWidget(self.path_label)
+
+        self.status_label = QLabel("状态：未开始")
+        self.status_label.setFont(QFont("Microsoft YaHei", 11))
+        self.status_label.setStyleSheet("color: #666; padding: 0 15px 15px 15px;")
+        layout.addWidget(self.status_label)
+
+        button_layout = QHBoxLayout()
+        button_layout.setContentsMargins(15, 0, 15, 15)
+        button_layout.setSpacing(12)
+
+        self.start_button = QPushButton("开始导出")
+        self.start_button.setFont(QFont("Microsoft YaHei", 12, QFont.Bold))
+        self.start_button.setStyleSheet("background-color: #FF69B4; color: white; border-radius: 10px; padding: 10px;")
+        self.start_button.clicked.connect(self.start_export)
+        button_layout.addWidget(self.start_button)
+
+        self.stop_button = QPushButton("停止导出")
+        self.stop_button.setFont(QFont("Microsoft YaHei", 12, QFont.Bold))
+        self.stop_button.setStyleSheet("background-color: #4682B4; color: white; border-radius: 10px; padding: 10px;")
+        self.stop_button.clicked.connect(self.stop_export)
+        self.stop_button.setEnabled(False)
+        button_layout.addWidget(self.stop_button)
+
+        open_button = QPushButton("打开日志目录")
+        open_button.setFont(QFont("Microsoft YaHei", 12, QFont.Bold))
+        open_button.setStyleSheet("background-color: #9370DB; color: white; border-radius: 10px; padding: 10px;")
+        open_button.clicked.connect(self.open_logs_dir)
+        button_layout.addWidget(open_button)
+
+        layout.addLayout(button_layout)
+        self.setLayout(layout)
+
+    def start_export(self):
+        self.exporting = True
+        self.start_button.setEnabled(False)
+        self.stop_button.setEnabled(True)
+        self.status_label.setText("状态：导出中...")
+
+    def stop_export(self):
+        self.exporting = False
+        self.start_button.setEnabled(True)
+        self.stop_button.setEnabled(False)
+        self.status_label.setText("状态：已暂停")
+
+    def open_logs_dir(self):
+        try:
+            path = get_logs_dir(self.base_path)
+            if sys.platform == "win32":
+                os.startfile(path)
+            else:
+                QMessageBox.information(self, "路径", path)
+        except Exception as e:
+            QMessageBox.warning(self, "失败", str(e))
 
 
 class VideoThread(QThread):

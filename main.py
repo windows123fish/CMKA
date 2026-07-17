@@ -8,7 +8,7 @@ import re
 import tempfile
 import shutil
 import hashlib
-from collections import deque
+from collections import collections
 from urllib.parse import urlparse
 from PyQt5.QtWidgets import (QApplication, QMainWindow, QWidget, QVBoxLayout, QHBoxLayout,
                             QLabel, QLineEdit, QPushButton, QListWidget, QListWidgetItem,

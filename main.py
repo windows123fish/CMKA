@@ -104,10 +104,6 @@ DEFAULT_CONFIG = {
     "prediction_color": [0, 255, 255],
     "model_url": [
         "https://github.com/ultralytics/assets/releases/download/v8.3.0/yolov8n.pt",
-        "https://github.com/ultralytics/assets/releases/download/v8.3.0/yolov8s.pt",
-        "https://github.com/ultralytics/assets/releases/download/v8.3.0/yolov8m.pt",
-        "https://github.com/ultralytics/assets/releases/download/v8.3.0/yolov8l.pt",
-        "https://github.com/ultralytics/assets/releases/download/v8.3.0/yolov8x.pt",
     ],
     "tracker_mode": "classic",
     "max_missing": 10,

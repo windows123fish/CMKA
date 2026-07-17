@@ -12,7 +12,7 @@ from collections import deque
 from urllib.parse import urlparse
 from PyQt5.QtWidgets import (QApplication, QMainWindow, QWidget, QVBoxLayout, QHBoxLayout,
                             QLabel, QLineEdit, QPushButton, QListWidget, QListWidgetItem,
-                            QMessageBox, QDialog, QCheckBox, QScrollArea, QGroupBox)
+                            QMessageBox, QDialog, QCheckBox, QScrollArea, QGroupBox, QComboBox)
 from PyQt5.QtCore import Qt, QThread, pyqtSignal, QEvent, QObject
 from PyQt5.QtGui import QImage, QPixmap, QFont
 
@@ -102,13 +102,26 @@ DEFAULT_CONFIG = {
     "show_prediction": True,
     "trajectory_color": [0, 0, 255],
     "prediction_color": [0, 255, 255],
-    "model_url": [
-        "https://github.com/ultralytics/assets/releases/download/v8.3.0/yolov8n.pt",
-    ],
+    "model_url": "https://github.com/ultralytics/assets/releases/download/v8.3.0/yolov8n.pt",
     "tracker_mode": "classic",
     "max_missing": 10,
     "iou_threshold": 0.25,
 }
+MODEL_LIST = [
+    "https://github.com/ultralytics/assets/releases/download/v8.3.0/yolov5n.pt",
+    "https://github.com/ultralytics/assets/releases/download/v8.3.0/yolov5s.pt",
+    "https://github.com/ultralytics/assets/releases/download/v8.3.0/yolov8n.pt",
+    "https://github.com/ultralytics/assets/releases/download/v8.3.0/yolov8s.pt",
+    "https://github.com/ultralytics/assets/releases/download/v8.3.0/yolov8m.pt",
+    "https://github.com/ultralytics/assets/releases/download/v8.3.0/yolov8l.pt",
+    "https://github.com/ultralytics/assets/releases/download/v8.3.0/yolov8x.pt",
+]
+
+def _model_name_from_url(url):
+    try:
+        return os.path.basename(urlparse(url).path)
+    except Exception:
+        return "model.pt"
 
 def resolve_base_path():
     if getattr(sys, 'frozen', False):
@@ -1031,7 +1044,7 @@ class ModelManageDialog(QDialog):
     def __init__(self, base_path, parent=None):
         super().__init__(parent)
         self.setWindowTitle("模型管理")
-        self.setFixedSize(520, 320)
+        self.setFixedSize(620, 360)
         self.setStyleSheet("background-color: white;")
         self.base_path = base_path
         self.pt_model_path = os.path.join(base_path, 'yolo26n.pt')
@@ -1055,12 +1068,29 @@ class ModelManageDialog(QDialog):
 
         layout.addWidget(header_widget)
 
-        info_label = QLabel("可删除旧模型后下载新模型，或直接使用当前模型热更新。")
+        info_label = QLabel("选择模型后可直接下载，也可删除当前模型后重载其他模型。")
         info_label.setFont(QFont("Microsoft YaHei", 12))
         info_label.setStyleSheet("color: #404040; padding: 15px;")
         info_label.setWordWrap(True)
         info_label.setAlignment(Qt.AlignCenter)
         layout.addWidget(info_label)
+
+        select_layout = QHBoxLayout()
+        select_label = QLabel("选择模型：")
+        select_label.setFont(QFont("Microsoft YaHei", 12))
+        select_layout.addWidget(select_label)
+
+        self.model_combo = QComboBox()
+        self.model_combo.setFont(QFont("Microsoft YaHei", 12))
+        self.model_combo.setMinimumWidth(340)
+        for url in MODEL_LIST:
+            self.model_combo.addItem(_model_name_from_url(url), url)
+        current_url = model_url_from_settings
+        index = self.model_combo.findData(current_url)
+        if index >= 0:
+            self.model_combo.setCurrentIndex(index)
+        select_layout.addWidget(self.model_combo)
+        layout.addLayout(select_layout)
 
         self.status_label = QLabel("")
         self.status_label.setFont(QFont("Microsoft YaHei", 11))

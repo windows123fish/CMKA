@@ -12,6 +12,9 @@ from collections import deque
 from urllib.parse import urlparse
 from PyQt5.QtCore import Qt, QThread, pyqtSignal, QEvent, QObject
 from PyQt5.QtGui import QImage, QPixmap, QFont
+from PyQt5.QtWidgets import (QApplication, QMainWindow, QWidget, QVBoxLayout, QHBoxLayout,
+                            QLabel, QLineEdit, QPushButton, QListWidget, QListWidgetItem,
+                            QMessageBox, QDialog, QCheckBox, QScrollArea, QGroupBox, QComboBox)
 
 try:
     import PyQt5

@@ -18,15 +18,16 @@
 <img src="https://img.shields.io/badge/python-3.12-blue.svg" alt="Python Version">
 <img src="https://img.shields.io/badge/PyQt5-5.15+-green.svg" alt="PyQt5">
 <img src="https://img.shields.io/badge/OpenCV-4.8+-orange.svg" alt="OpenCV">
-<img src="https://img.shields.io/badge/YOLO-26n-red.svg" alt="YOLO">
+<img src="https://img.shields.io/badge/YOLO-red.svg" alt="YOLO">
 
 </div>
 
-CMKA 是一款基于 **YOLO26n** 和 **Ultralytics** 的实时目标检测应用程序，使用 PyQt5 构建优雅的图形用户界面。
+CMKA 是一款基于 **YOLO** 和 **Ultralytics** 的实时目标检测应用程序，使用 PyQt5 构建优雅的图形用户界面。
 
 ## 主要特性
 
 - ✅ **实时摄像头检测** - 支持多摄像头切换，实时显示检测结果
+- ✅ **多模型支持** - 内置 YOLOv5 与 YOLOv8 多尺寸模型，可在软件内自由切换
 - ✅ **80种目标识别** - 涵盖人物、车辆、动物、日常物品、食物等COCO类别
 - ✅ **中文标签显示** - 使用 PIL 渲染清晰的中文类别名称
 - ✅ **类别过滤** - 可自定义禁用特定检测类别
@@ -34,6 +35,7 @@ CMKA 是一款基于 **YOLO26n** 和 **Ultralytics** 的实时目标检测应用
 - ✅ **轨迹绘制** - 记录并绘制目标运动轨迹（人脸除外）
 - ✅ **位置预测** - 预测目标下一帧位置（人脸除外）
 - ✅ **轨迹设置** - 可自定义轨迹线和预测点的显示与颜色
+- ✅ **模型管理** - 支持下载、删除、重载模型
 - ✅ **优雅界面** - 自定义标题栏、圆角窗口设计
 - ✅ **窗口控制** - 支持最小化、最大化、拖动操作
 
@@ -66,6 +68,14 @@ python main.py
 4. 点击"开始检测"按钮启动实时检测
 5. 点击"禁用类别"可排除特定检测目标
 6. 点击"轨迹设置"可配置轨迹显示和颜色
+7. 点击"模型管理"可选择、下载或切换 YOLO 模型
+
+## 模型管理
+
+- **选择模型** - 下拉框切换 YOLO 模型，支持多版本与多尺寸
+- **下载模型** - 直接下载所选模型文件
+- **删除模型** - 删除本地已下载的模型
+- **重载模型** - 不重启应用即可重新加载模型
 
 ## 轨迹设置
 
@@ -84,4 +94,4 @@ python main.py
 
 ---
 
-*基于 PyQt5 & YOLO26n 构建*
+*基于 PyQt5 & YOLO 构建*

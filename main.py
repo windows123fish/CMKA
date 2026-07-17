@@ -8,7 +8,7 @@ import re
 import tempfile
 import shutil
 import hashlib
-from collections import collections
+from collections import deque
 from urllib.parse import urlparse
 from PyQt5.QtWidgets import (QApplication, QMainWindow, QWidget, QVBoxLayout, QHBoxLayout,
                             QLabel, QLineEdit, QPushButton, QListWidget, QListWidgetItem,
@@ -92,24 +92,6 @@ def draw_rounded_rectangle(img, pt1, pt2, color, thickness=-1, radius=20):
 
     return img
 
-
-# ==============================
-# 配置/日志/统计/模型工具函数
-# ==============================
-
-APP_CONFIG_FILENAME = "config.json"
-DEFAULT_CONFIG = {
-    "camera_id": 0,
-    "disabled_classes": [],
-    "show_trajectory": True,
-    "show_prediction": True,
-    "trajectory_color": [0, 0, 255],
-    "prediction_color": [0, 255, 255],
-    "model_url": "https://github.com/ultralytics/assets/releases/download/v8.3.0/yolov8n.pt",
-    "tracker_mode": "classic",
-    "max_missing": 10,
-    "iou_threshold": 0.25,
-}
 
 
 def resolve_base_path():

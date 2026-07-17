@@ -131,7 +131,6 @@ def resolve_base_path():
         return os.path.dirname(sys.executable)
     return os.path.dirname(os.path.abspath(__file__))
 
-
 def ensure_dir(path):
     try:
         os.makedirs(path, exist_ok=True)

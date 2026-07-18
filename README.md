@@ -92,6 +92,8 @@ python main.py
 - Python 3.12+
 - 至少 4GB RAM
 
+我求求你们改一下代码吧😭我改不过来了😭
+
 ---
 
 *基于 PyQt5 & YOLO 构建*

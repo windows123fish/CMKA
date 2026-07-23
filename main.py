@@ -1381,12 +1381,12 @@ class VideoThread(QThread):
                         timestamp = time.strftime("%Y-%m-%d %H:%M:%S")
                         for det in detections:
                             x, y, w, h, class_id, confidence = det
-                            if 0 <= class_id < len(classes):
+                            if 0 <= class_id < len(_classes):
                                 row = {
                                     "time": timestamp,
                                     "camera_id": self.camera_id,
                                     "track_id": "",
-                                    "class_name": classes[class_id],
+                                    "class_name": _classes[class_id],
                                     "confidence": f"{confidence:.3f}",
                                     "x": x,
                                     "y": y,

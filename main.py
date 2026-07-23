@@ -8,6 +8,7 @@ import re
 import tempfile
 import shutil
 import hashlib
+import threading
 from collections import deque
 from urllib.parse import urlparse
 from PyQt5.QtWidgets import (QApplication, QMainWindow, QWidget, QVBoxLayout, QHBoxLayout,
@@ -355,6 +356,8 @@ classes = {i: name for i, name in enumerate([
     'remote', 'keyboard', 'cell phone', 'microwave', 'oven', 'toaster', 'sink', 'refrigerator',
     'book', 'clock', 'vase', 'scissors', 'teddy bear', 'hair drier', 'toothbrush'
 ])}
+state_lock = threading.Lock()
+
 disabled_classes = set()
 
 show_trajectory = True
@@ -1283,11 +1286,21 @@ class VideoThread(QThread):
             print(f"无法打开摄像头 {self.camera_id}")
             return
             
+        fail_count = 0
+        max_fail = 30
+        
         while self.running:
             try:
                 ret, frame = cap.read()
                 if not ret:
+                    fail_count += 1
+                    print(f"摄像头读取失败 ({fail_count}/{max_fail})")
+                    if fail_count >= max_fail:
+                        print("摄像头连续失败，停止检测")
+                        break
+                    time.sleep(0.1)
                     continue
+                fail_count = 0
                     
                 detections = []
                 tracked_objects = []
@@ -1688,3 +1701,4 @@ def main():
 
 if __name__ == "__main__":
     main()
+#676767

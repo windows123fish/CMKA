@@ -191,18 +191,19 @@ def save_settings(base_path, settings):
 def apply_settings_to_runtime(settings):
     global disabled_classes, show_trajectory, show_prediction, trajectory_color, prediction_color, tracker_mode_from_settings, max_missing, iou_threshold
 
-    disabled_classes = set(settings.get("disabled_classes", []))
-    show_trajectory = bool(settings.get("show_trajectory", True))
-    show_prediction = bool(settings.get("show_prediction", True))
-    tc = settings.get("trajectory_color")
-    if isinstance(tc, (list, tuple)) and len(tc) == 3:
-        trajectory_color = tuple(int(x) for x in tc)
-    pc = settings.get("prediction_color")
-    if isinstance(pc, (list, tuple)) and len(pc) == 3:
-        prediction_color = tuple(int(x) for x in pc)
-    tracker_mode_from_settings = str(settings.get("tracker_mode", "classic") or "classic")
-    max_missing = int(settings.get("max_missing", 10) or 10)
-    iou_threshold = float(settings.get("iou_threshold", 0.25) or 0.25)
+    with state_lock:
+        disabled_classes = set(settings.get("disabled_classes", []))
+        show_trajectory = bool(settings.get("show_trajectory", True))
+        show_prediction = bool(settings.get("show_prediction", True))
+        tc = settings.get("trajectory_color")
+        if isinstance(tc, (list, tuple)) and len(tc) == 3:
+            trajectory_color = tuple(int(x) for x in tc)
+        pc = settings.get("prediction_color")
+        if isinstance(pc, (list, tuple)) and len(pc) == 3:
+            prediction_color = tuple(int(x) for x in pc)
+        tracker_mode_from_settings = str(settings.get("tracker_mode", "classic") or "classic")
+        max_missing = int(settings.get("max_missing", 10) or 10)
+        iou_threshold = float(settings.get("iou_threshold", 0.25) or 0.25)
 
 
 def save_log_row(file_path, row):

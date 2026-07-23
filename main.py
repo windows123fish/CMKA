@@ -8,6 +8,8 @@ import re
 import tempfile
 import shutil
 import hashlib
+import threading
+import math
 from collections import deque
 from urllib.parse import urlparse
 from PyQt5.QtWidgets import (QApplication, QMainWindow, QWidget, QVBoxLayout, QHBoxLayout,
@@ -134,8 +136,8 @@ def resolve_base_path():
 def ensure_dir(path):
     try:
         os.makedirs(path, exist_ok=True)
-    except Exception:
-        pass
+    except Exception as e:
+        print(f"创建目录失败: {path}, 错误: {e}")
 
 
 def get_config_path(base_path):
@@ -192,18 +194,19 @@ def save_settings(base_path, settings):
 def apply_settings_to_runtime(settings):
     global disabled_classes, show_trajectory, show_prediction, trajectory_color, prediction_color, tracker_mode_from_settings, max_missing, iou_threshold
 
-    disabled_classes = set(settings.get("disabled_classes", []))
-    show_trajectory = bool(settings.get("show_trajectory", True))
-    show_prediction = bool(settings.get("show_prediction", True))
-    tc = settings.get("trajectory_color")
-    if isinstance(tc, (list, tuple)) and len(tc) == 3:
-        trajectory_color = tuple(int(x) for x in tc)
-    pc = settings.get("prediction_color")
-    if isinstance(pc, (list, tuple)) and len(pc) == 3:
-        prediction_color = tuple(int(x) for x in pc)
-    tracker_mode_from_settings = str(settings.get("tracker_mode", "classic") or "classic")
-    max_missing = int(settings.get("max_missing", 10) or 10)
-    iou_threshold = float(settings.get("iou_threshold", 0.25) or 0.25)
+    with state_lock:
+        disabled_classes = set(settings.get("disabled_classes", []))
+        show_trajectory = bool(settings.get("show_trajectory", True))
+        show_prediction = bool(settings.get("show_prediction", True))
+        tc = settings.get("trajectory_color")
+        if isinstance(tc, (list, tuple)) and len(tc) == 3:
+            trajectory_color = tuple(int(x) for x in tc)
+        pc = settings.get("prediction_color")
+        if isinstance(pc, (list, tuple)) and len(pc) == 3:
+            prediction_color = tuple(int(x) for x in pc)
+        tracker_mode_from_settings = str(settings.get("tracker_mode", "classic") or "classic")
+        max_missing = int(settings.get("max_missing", 10) or 10)
+        iou_threshold = float(settings.get("iou_threshold", 0.25) or 0.25)
 
 
 def save_log_row(file_path, row):
@@ -219,8 +222,8 @@ def save_log_row(file_path, row):
                 f"{row.get('fps', '')},{row.get('total_objects', '')}\n"
             )
         return True
-    except Exception:
-        pass
+    except Exception as e:
+        print(f"日志写入失败: {file_path}, 错误: {e}")
     return False
 
 
@@ -262,8 +265,6 @@ def reload_model(pt_model_path):
         return False
 
     try:
-        model = None
-        use_ultralytics = False
         candidates = []
 
         if os.path.exists(pt_model_path):
@@ -277,9 +278,10 @@ def reload_model(pt_model_path):
             try:
                 loaded = YOLO(path)
                 _ = loaded.names
-                model = loaded
-                use_ultralytics = True
-                classes = model.names
+                with state_lock:
+                    model = loaded
+                    use_ultralytics = True
+                    classes = model.names
                 print(f"模型重载成功: {path}")
                 return True
             except Exception as e1:
@@ -288,8 +290,9 @@ def reload_model(pt_model_path):
     except Exception as e:
         print(f"重载模型异常: {e}")
 
-    model = None
-    use_ultralytics = False
+    with state_lock:
+        model = None
+        use_ultralytics = False
     return False
 
 
@@ -357,6 +360,8 @@ classes = {i: name for i, name in enumerate([
     'remote', 'keyboard', 'cell phone', 'microwave', 'oven', 'toaster', 'sink', 'refrigerator',
     'book', 'clock', 'vase', 'scissors', 'teddy bear', 'hair drier', 'toothbrush'
 ])}
+state_lock = threading.Lock()
+
 disabled_classes = set()
 
 show_trajectory = True
@@ -815,12 +820,14 @@ class DisableClassDialog(QDialog):
     
     def save_and_close(self):
         global disabled_classes
-        disabled_classes.clear()
-        for class_name, checkbox in self.checkboxes:
-            if checkbox.isChecked():
-                disabled_classes.add(class_name)
+        with state_lock:
+            disabled_classes.clear()
+            for class_name, checkbox in self.checkboxes:
+                if checkbox.isChecked():
+                    disabled_classes.add(class_name)
+            count = len(disabled_classes)
         
-        QMessageBox.information(self, "成功", f"已禁用 {len(disabled_classes)} 个类别")
+        QMessageBox.information(self, "成功", f"已禁用 {count} 个类别")
         self.accept()
 
 
@@ -991,24 +998,29 @@ class TrackSettingsDialog(QDialog):
     
     def on_trajectory_toggle(self, state):
         global show_trajectory
-        show_trajectory = (state == Qt.Checked)
+        with state_lock:
+            show_trajectory = (state == Qt.Checked)
     
     def on_prediction_toggle(self, state):
         global show_prediction
-        show_prediction = (state == Qt.Checked)
+        with state_lock:
+            show_prediction = (state == Qt.Checked)
 
     def on_tracker_mode_toggle(self, state):
         global tracker_mode_from_settings
-        tracker_mode_from_settings = "bytetrack" if state == Qt.Checked else "classic"
+        with state_lock:
+            tracker_mode_from_settings = "bytetrack" if state == Qt.Checked else "classic"
     
     def set_trajectory_color(self, color):
         global trajectory_color
-        trajectory_color = color
+        with state_lock:
+            trajectory_color = color
         self.update_custom_button_color(self.custom_trajectory_button, color)
     
     def set_prediction_color(self, color):
         global prediction_color
-        prediction_color = color
+        with state_lock:
+            prediction_color = color
         self.update_custom_button_color(self.custom_prediction_button, color)
     
     def choose_custom_trajectory_color(self):
@@ -1285,19 +1297,39 @@ class VideoThread(QThread):
             print(f"无法打开摄像头 {self.camera_id}")
             return
             
+        fail_count = 0
+        max_fail = 30
+        
         while self.running:
             try:
                 ret, frame = cap.read()
                 if not ret:
+                    fail_count += 1
+                    print(f"摄像头读取失败 ({fail_count}/{max_fail})")
+                    if fail_count >= max_fail:
+                        print("摄像头连续失败，停止检测")
+                        break
+                    time.sleep(0.1)
                     continue
+                fail_count = 0
                     
                 detections = []
                 tracked_objects = []
                 stats = None
                 
-                if use_ultralytics and model is not None:
+                with state_lock:
+                    _use_ultralytics = use_ultralytics
+                    _model = model
+                    _disabled_classes = set(disabled_classes)
+                    _show_trajectory = show_trajectory
+                    _show_prediction = show_prediction
+                    _trajectory_color = trajectory_color
+                    _prediction_color = prediction_color
+                    _classes = dict(classes)
+                
+                if _use_ultralytics and _model is not None:
                     try:
-                        results = model(frame, conf=0.5, iou=0.45, verbose=False)
+                        results = _model(frame, conf=0.5, iou=0.45, verbose=False)
 
                         for result in results:
                             for box in result.boxes:
@@ -1306,9 +1338,9 @@ class VideoThread(QThread):
                                 h = y2 - y1
                                 confidence = float(box.conf[0])
                                 class_id = int(box.cls[0])
-                                class_name = classes[class_id]
+                                class_name = _classes[class_id]
 
-                                if class_name in disabled_classes:
+                                if class_name in _disabled_classes:
                                     continue
 
                                 detections.append((x1, y1, w, h, class_id, confidence))
@@ -1325,38 +1357,38 @@ class VideoThread(QThread):
                     class_id = obj.class_id
                     track_id = obj.track_id
                     
-                    if 0 <= class_id < len(classes):
-                        class_name = classes[class_id]
+                    if 0 <= class_id < len(_classes):
+                        class_name = _classes[class_id]
                         
                         cv2.rectangle(frame, (x, y), (x + w, y + h), (0, 255, 0), 2)
                         
                         label = f"ID:{track_id} {class_name}: {obj.confidence:.2f}"
                         frame = put_chinese_text(frame, label, (x, y - 10), font_size=14, color=(0, 255, 0))
                         
-                        if show_trajectory and len(obj.trajectory) > 1 and class_name != 'person':
+                        if _show_trajectory and len(obj.trajectory) > 1 and class_name != 'person':
                             for i in range(1, len(obj.trajectory)):
                                 pt1 = obj.trajectory[i-1]
                                 pt2 = obj.trajectory[i]
-                                cv2.line(frame, pt1, pt2, trajectory_color, 2)
+                                cv2.line(frame, pt1, pt2, _trajectory_color, 2)
                         
-                        if show_prediction and class_name != 'person':
+                        if _show_prediction and class_name != 'person':
                             predicted_pos = obj.predict_next_position()
                             if predicted_pos is not None:
                                 current_pos = (x + w // 2, y + h // 2)
                                 pred_x, pred_y = int(predicted_pos[0]), int(predicted_pos[1])
-                                self.draw_direction_arrow(frame, current_pos, (pred_x, pred_y), prediction_color)
+                                self.draw_direction_arrow(frame, current_pos, (pred_x, pred_y), _prediction_color)
 
                 if self.log_export_dialog and self.log_export_dialog.exporting:
                     try:
                         timestamp = time.strftime("%Y-%m-%d %H:%M:%S")
                         for det in detections:
                             x, y, w, h, class_id, confidence = det
-                            if 0 <= class_id < len(classes):
+                            if 0 <= class_id < len(_classes):
                                 row = {
                                     "time": timestamp,
                                     "camera_id": self.camera_id,
                                     "track_id": "",
-                                    "class_name": classes[class_id],
+                                    "class_name": _classes[class_id],
                                     "confidence": f"{confidence:.3f}",
                                     "x": x,
                                     "y": y,
@@ -1382,8 +1414,6 @@ class VideoThread(QThread):
         print("摄像头已释放")
     
     def draw_direction_arrow(self, frame, start_point, end_point, color):
-        import math
-        
         start_x, start_y = start_point
         end_x, end_y = end_point
         
@@ -1666,12 +1696,7 @@ class MainWindow(QMainWindow):
 def main():
     app = QApplication(sys.argv)
     
-    license_dialog = LicenseDialog()
-    if not license_dialog.exec_():
-        print("验证失败，程序退出")
-        return
-    
-    print("验证成功，欢迎使用！")
+    print("欢迎使用！")
     
     camera_dialog = CameraSelectDialog()
     selected_camera = camera_id_from_settings

@@ -505,8 +505,34 @@ def run_web(host="0.0.0.0", port=8000):
     from fastapi import FastAPI, HTTPException
     from fastapi.responses import StreamingResponse, HTMLResponse
 
-    app = FastAPI(title="CMKA")
+    print("=" * 50)
+    print("CMKA 实时目标检测 - Web模式")
+    print("=" * 50)
+    print(f"\n正在加载YOLO模型，请稍候...")
+    print(f"模型路径: {resolve_base_path()}/yolo26n.pt")
+    
     engine = DetectionEngine(resolve_base_path())
+    model_loaded = False
+    
+    try:
+        from ultralytics import YOLO
+        if os.path.exists(engine.pt_model_path):
+            engine.model = YOLO(engine.pt_model_path)
+            engine.use_ultralytics = True
+            engine.classes = engine.model.names
+            model_loaded = True
+            print(f"✓ YOLO模型加载成功")
+        else:
+            print(f"✗ 未找到模型文件: {engine.pt_model_path}")
+    except ImportError:
+        print("✗ 未安装 ultralytics 库，请运行: pip install ultralytics")
+    
+    if not model_loaded:
+        print("\n模型加载失败，程序退出")
+        return
+    
+    print(f"\n✓ 准备就绪，启动Web服务器...")
+    app = FastAPI(title="CMKA")
     camera_running = False
     current_frame = None
     current_stats = {"fps": 0.0, "avg_conf": 0.0, "total_objects": 0}
@@ -515,7 +541,9 @@ def run_web(host="0.0.0.0", port=8000):
 
     def camera_loop(camera_id=0):
         nonlocal camera_running, current_frame, current_stats
-        cap = cv2.VideoCapture(camera_id, cv2.CAP_DSHOW)
+        cap = cv2.VideoCapture(camera_id)
+        if not cap.isOpened():
+            cap = cv2.VideoCapture(camera_id, cv2.CAP_MSMF)
         if not cap.isOpened():
             print("摄像头打开失败")
             return
@@ -551,7 +579,9 @@ def run_web(host="0.0.0.0", port=8000):
         max_cameras = 5
         for i in range(max_cameras):
             try:
-                cap = cv2.VideoCapture(i, cv2.CAP_DSHOW)
+                cap = cv2.VideoCapture(i)
+                if not cap.isOpened():
+                    cap = cv2.VideoCapture(i, cv2.CAP_MSMF)
                 if cap.isOpened():
                     info = {"id": i, "name": f"摄像头 {i}"}
                     try:
@@ -717,6 +747,10 @@ setInterval(async () => {
     @app.get("/stats")
     async def stats():
         return current_stats
+    
+    @app.get("/health")
+    async def health():
+        return {"status": "ok", "model_loaded": engine.model is not None, "camera_running": camera_running}
 
     @app.put("/settings")
     async def settings_update(settings: dict):
@@ -756,7 +790,11 @@ setInterval(async () => {
         return {"ok": True}
 
     import uvicorn
-    print(f"Web UI: http://localhost:{port}")
+    print(f"\n" + "=" * 50)
+    print(f"Web服务器已启动")
+    print(f"访问地址: http://localhost:{port}")
+    print(f"按 Ctrl+C 停止服务器")
+    print("=" * 50)
     uvicorn.run(app, host=host, port=port, log_level="info")
 
 

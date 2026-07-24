@@ -501,7 +501,7 @@ class DetectionEngine:
 
 
 # ===== WEB UI =====
-def run_web(host="0.0.0.0", port=8000):
+def run_web(host="127.0.0.1", port=8000):
     from fastapi import FastAPI, HTTPException
     from fastapi.responses import StreamingResponse, HTMLResponse
 
@@ -521,17 +521,17 @@ def run_web(host="0.0.0.0", port=8000):
             engine.use_ultralytics = True
             engine.classes = engine.model.names
             model_loaded = True
-            print(f"✓ YOLO模型加载成功")
+            print(f"成功： YOLO模型加载成功")
         else:
-            print(f"✗ 未找到模型文件: {engine.pt_model_path}")
+            print(f"警告: 未找到模型文件: {engine.pt_model_path}")
     except ImportError:
-        print("✗ 未安装 ultralytics 库，请运行: pip install ultralytics")
+        print("警告: 未安装 ultralytics 库，请运行: pip install ultralytics")
     
     if not model_loaded:
-        print("\n模型加载失败，程序退出")
+        print("\n警告: 模型未加载，程序退出")
         return
     
-    print(f"\n✓ 准备就绪，启动Web服务器...")
+    print(f"\n成功： 准备就绪，启动Web服务器...")
     app = FastAPI(title="CMKA")
     camera_running = False
     current_frame = None
@@ -545,7 +545,7 @@ def run_web(host="0.0.0.0", port=8000):
         if not cap.isOpened():
             cap = cv2.VideoCapture(camera_id, cv2.CAP_MSMF)
         if not cap.isOpened():
-            print("摄像头打开失败")
+            print("警告: 摄像头打开失败")
             return
         try:
             while True:
@@ -792,7 +792,8 @@ setInterval(async () => {
     import uvicorn
     print(f"\n" + "=" * 50)
     print(f"Web服务器已启动")
-    print(f"访问地址: http://localhost:{port}")
+    print(f"监听地址: http://{host}:{port}")
+    print(f"请在浏览器中访问: http://127.0.0.1:{port}")
     print(f"按 Ctrl+C 停止服务器")
     print("=" * 50)
     uvicorn.run(app, host=host, port=port, log_level="info")
@@ -1795,7 +1796,7 @@ def show_mode_selection():
         pass
 
     from PyQt5.QtWidgets import (QApplication, QDialog, QVBoxLayout, QHBoxLayout, 
-                                QLabel, QPushButton, QWidget)
+                                QLabel, QPushButton)
     from PyQt5.QtGui import QFont
     from PyQt5.QtCore import Qt
 
@@ -1803,106 +1804,49 @@ def show_mode_selection():
     if app is None:
         app = QApplication(sys.argv)
 
-    class ModeSelectDialog(QDialog):
-        def __init__(self):
-            super().__init__()
-            self.setWindowTitle("CMKA 目标检测 - 模式选择")
-            self.setFixedSize(520, 420)
-            self.setStyleSheet("background-color: white;")
-            self.selected_mode = None
+    dialog = QDialog()
+    dialog.setWindowTitle("CMKA 目标检测 - 模式选择")
+    dialog.setFixedSize(400, 250)
 
-            layout = QVBoxLayout()
-            layout.setSpacing(15)
-            layout.setContentsMargins(20, 20, 20, 20)
+    layout = QVBoxLayout()
+    layout.setSpacing(20)
+    layout.setContentsMargins(30, 30, 30, 30)
 
-            title = QLabel("CMKA 实时目标检测")
-            title.setFont(QFont("Microsoft YaHei", 24, QFont.Bold))
-            title.setStyleSheet("color: white; padding: 25px; background: linear-gradient(135deg, #667eea 0%, #764ba2 100%); border-radius: 15px;")
-            title.setAlignment(Qt.AlignCenter)
-            layout.addWidget(title)
+    title = QLabel("请选择运行模式")
+    title.setFont(QFont("Microsoft YaHei", 16, QFont.Bold))
+    title.setAlignment(Qt.AlignCenter)
+    layout.addWidget(title)
 
-            info_label = QLabel("请选择运行模式：")
-            info_label.setFont(QFont("Microsoft YaHei", 16))
-            info_label.setStyleSheet("color: #404040;")
-            info_label.setAlignment(Qt.AlignCenter)
-            layout.addWidget(info_label)
+    button_layout = QHBoxLayout()
+    button_layout.setSpacing(30)
 
-            button_layout = QHBoxLayout()
-            button_layout.setSpacing(25)
-            button_layout.setContentsMargins(50, 0, 50, 0)
+    qt_btn = QPushButton("桌面模式")
+    qt_btn.setFont(QFont("Microsoft YaHei", 14))
+    qt_btn.setFixedSize(150, 60)
+    button_layout.addWidget(qt_btn)
 
-            qt_button = QPushButton("桌面模式")
-            qt_button.setFont(QFont("Microsoft YaHei", 13, QFont.Bold))
-            qt_button.setStyleSheet("""
-                QPushButton {
-                    background: linear-gradient(135deg, #FF69B4 0%, #FFB6C1 100%);
-                    color: white;
-                    border-radius: 12px;
-                    padding: 25px 20px;
-                    border: none;
-                    min-width: 160px;
-                    min-height: 100px;
-                }
-                QPushButton:hover {
-                    background: linear-gradient(135deg, #FF1493 0%, #FF69B4 100%);
-                }
-            """)
-            qt_button.clicked.connect(lambda: self.select_mode("qt"))
-            button_layout.addWidget(qt_button)
+    web_btn = QPushButton("网页模式")
+    web_btn.setFont(QFont("Microsoft YaHei", 14))
+    web_btn.setFixedSize(150, 60)
+    button_layout.addWidget(web_btn)
 
-            web_button = QPushButton("网页模式")
-            web_button.setFont(QFont("Microsoft YaHei", 13, QFont.Bold))
-            web_button.setStyleSheet("""
-                QPushButton {
-                    background: linear-gradient(135deg, #00d4ff 0%, #0099cc 100%);
-                    color: white;
-                    border-radius: 12px;
-                    padding: 25px 20px;
-                    border: none;
-                    min-width: 160px;
-                    min-height: 100px;
-                }
-                QPushButton:hover {
-                    background: linear-gradient(135deg, #00b8e6 0%, #0080aa 100%);
-                }
-            """)
-            web_button.clicked.connect(lambda: self.select_mode("web"))
-            button_layout.addWidget(web_button)
+    layout.addLayout(button_layout)
+    dialog.setLayout(layout)
 
-            layout.addLayout(button_layout)
+    result = None
+    def select_qt():
+        nonlocal result
+        result = "qt"
+        dialog.accept()
+    def select_web():
+        nonlocal result
+        result = "web"
+        dialog.accept()
 
-            desc_layout = QHBoxLayout()
-            desc_layout.setSpacing(25)
-            desc_layout.setContentsMargins(50, 10, 50, 10)
-
-            qt_desc = QLabel("• 本地桌面应用<br>• 界面美观流畅<br>• 需要安装 PyQt5")
-            qt_desc.setFont(QFont("Microsoft YaHei", 11))
-            qt_desc.setStyleSheet("color: #666;")
-            qt_desc.setAlignment(Qt.AlignCenter)
-            qt_desc.setWordWrap(True)
-            qt_desc.setTextFormat(Qt.RichText)
-            desc_layout.addWidget(qt_desc)
-
-            web_desc = QLabel("• 浏览器访问<br>• 支持远程访问<br>• 需要安装 fastapi")
-            web_desc.setFont(QFont("Microsoft YaHei", 11))
-            web_desc.setStyleSheet("color: #666;")
-            web_desc.setAlignment(Qt.AlignCenter)
-            web_desc.setWordWrap(True)
-            web_desc.setTextFormat(Qt.RichText)
-            desc_layout.addWidget(web_desc)
-
-            layout.addLayout(desc_layout)
-
-            self.setLayout(layout)
-
-        def select_mode(self, mode):
-            self.selected_mode = mode
-            self.accept()
-
-    dialog = ModeSelectDialog()
-    if dialog.exec_():
-        return dialog.selected_mode
-    return None
+    qt_btn.clicked.connect(select_qt)
+    web_btn.clicked.connect(select_web)
+    dialog.exec_()
+    return result
 
 
 _web_server_process = None
@@ -1969,7 +1913,7 @@ def main():
     parser = argparse.ArgumentParser(description="CMKA 目标检测")
     parser.add_argument("--mode", choices=["qt", "web"], help="运行模式")
     parser.add_argument("--port", type=int, default=8000, help="Web端口")
-    parser.add_argument("--host", default="0.0.0.0", help="Web监听地址")
+    parser.add_argument("--host", default="127.0.0.1", help="Web监听地址")
     args = parser.parse_args()
 
     is_cli = args.mode is not None

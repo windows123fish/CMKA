@@ -1447,20 +1447,28 @@ def run_qt():
             main_layout.addWidget(title_bar)
             
             content_widget = QWidget()
-            content_widget.setStyleSheet("background-color: white; border-bottom-left-radius: 15px; border-bottom-right-radius: 15px; padding: 20px;")
+            content_widget.setStyleSheet("background-color: white; border-bottom-left-radius: 15px; border-bottom-right-radius: 15px; padding: 15px;")
             content_layout = QVBoxLayout(content_widget)
+            content_layout.setSpacing(10)
+            
+            video_container = QWidget()
+            video_container.setStyleSheet("border: 2px solid #B0E0E6; border-radius: 10px; background-color: #f8f8f8;")
+            video_layout = QVBoxLayout(video_container)
+            video_layout.setContentsMargins(0, 0, 0, 0)
             
             self.video_label = QLabel()
             self.video_label.setAlignment(Qt.AlignCenter)
-            self.video_label.setStyleSheet("border: 2px solid #B0E0E6; border-radius: 10px; min-height: 520px;")
+            self.video_label.setStyleSheet("background-color: black;")
             self.video_label.setScaledContents(True)
-            content_layout.addWidget(self.video_label)
+            video_layout.addWidget(self.video_label, 1)
             
             self.stats_label = QLabel("FPS: 0.0 | 目标: 0 | 平均置信度: 0.000")
-            self.stats_label.setFont(QFont("Microsoft YaHei", 12))
-            self.stats_label.setStyleSheet("color: #404040; padding: 4px 8px;")
+            self.stats_label.setFont(QFont("Microsoft YaHei", 12, QFont.Bold))
+            self.stats_label.setStyleSheet("color: white; background-color: rgba(0,0,0,0.6); padding: 6px 15px;")
             self.stats_label.setAlignment(Qt.AlignLeft | Qt.AlignVCenter)
-            content_layout.addWidget(self.stats_label)
+            video_layout.addWidget(self.stats_label)
+            
+            content_layout.addWidget(video_container, 1)
             
             control_layout = QHBoxLayout()
             control_layout.setContentsMargins(0, 10, 0, 0)

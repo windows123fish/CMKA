@@ -1680,6 +1680,10 @@ def show_mode_selection():
     from PyQt5.QtGui import QFont
     from PyQt5.QtCore import Qt
 
+    app = QApplication.instance()
+    if app is None:
+        app = QApplication(sys.argv)
+
     class ModeSelectDialog(QDialog):
         def __init__(self):
             super().__init__()

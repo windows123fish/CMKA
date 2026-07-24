@@ -260,7 +260,8 @@ class DetectionEngine:
         ])}
         
         self._load_state()
-        self._load_model()
+        self.model = None
+        self.use_ultralytics = False
         
         self.tracker = ObjectTracker(iou_threshold=self.iou_threshold, tracker_mode=self.tracker_mode, max_missing=self.max_missing)
         self.stats_aggregator = StatsAggregator()
@@ -377,7 +378,21 @@ class DetectionEngine:
 
     def process_frame(self, frame):
         detections = []
+        
         with self.state_lock:
+            if self.model is None:
+                try:
+                    from ultralytics import YOLO
+                    if os.path.exists(self.pt_model_path):
+                        self.model = YOLO(self.pt_model_path)
+                        self.use_ultralytics = True
+                        self.classes = self.model.names
+                        print(f"YOLO模型加载成功: {self.pt_model_path}")
+                    else:
+                        print(f"警告: 未找到模型文件: {self.pt_model_path}")
+                except ImportError:
+                    print("未安装 ultralytics 库，请运行: pip install ultralytics")
+            
             _use = self.use_ultralytics
             _model = self.model
             _disabled = set(self.disabled_classes)
@@ -531,6 +546,30 @@ def run_web(host="0.0.0.0", port=8000):
                     yield b'--frame\r\nContent-Type: image/jpeg\r\n\r\n' + buf.tobytes() + b'\r\n'
             time.sleep(0.033)
 
+    def detect_cameras_list():
+        cameras = []
+        max_cameras = 5
+        for i in range(max_cameras):
+            try:
+                cap = cv2.VideoCapture(i, cv2.CAP_DSHOW)
+                if cap.isOpened():
+                    info = {"id": i, "name": f"摄像头 {i}"}
+                    try:
+                        width = cap.get(cv2.CAP_PROP_FRAME_WIDTH)
+                        height = cap.get(cv2.CAP_PROP_FRAME_HEIGHT)
+                        if width > 0 and height > 0:
+                            info["resolution"] = f"{int(width)}x{int(height)}"
+                    except:
+                        pass
+                    cameras.append(info)
+                    cap.release()
+            except:
+                pass
+        return cameras
+
+    cameras = detect_cameras_list()
+    cameras_html = "\n".join([f'<option value="{c["id"]}">{c["name"]} ({c.get("resolution", "未知")})</option>' for c in cameras]) if cameras else '<option value="0">默认摄像头</option>'
+
     @app.get("/", response_class=HTMLResponse)
     async def index():
         return HTMLResponse(content="""
@@ -546,12 +585,12 @@ body { font-family: sans-serif; background: #1a1a2e; color: white; padding: 20px
 .container { max-width: 1000px; margin: 0 auto; }
 h1 { text-align: center; margin-bottom: 20px; color: #00d4ff; }
 .main { display: grid; grid-template-columns: 1fr 280px; gap: 20px; }
-.video-box { background: #16213e; border-radius: 10px; overflow: hidden; }
+.video-box { background: #16213e; border-radius: 10px; overflow: hidden; position: relative; }
 .video-box img { width: 100%; display: block; }
-.stats { display: flex; gap: 15px; padding: 15px; background: #0f3460; margin-top: 10px; border-radius: 10px; }
-.stat { flex: 1; text-align: center; }
-.stat label { display: block; font-size: 12px; color: #aaa; }
-.stat value { font-size: 20px; font-weight: bold; color: #00d4ff; }
+.video-box .stats-overlay { position: absolute; bottom: 0; left: 0; right: 0; background: rgba(0,0,0,0.7); padding: 10px 15px; display: flex; gap: 20px; }
+.video-box .stats-overlay span { font-size: 13px; }
+.video-box .stats-overlay span label { color: #aaa; margin-right: 5px; }
+.video-box .stats-overlay span value { color: #00d4ff; font-weight: bold; }
 .panel { background: #16213e; border-radius: 10px; padding: 15px; }
 .panel h3 { color: #00d4ff; margin-bottom: 15px; padding-bottom: 10px; border-bottom: 1px solid #333; }
 .btn { width: 100%; padding: 10px; border: none; border-radius: 6px; font-size: 14px; font-weight: bold; cursor: pointer; margin-bottom: 8px; opacity: 1; }
@@ -559,6 +598,7 @@ h1 { text-align: center; margin-bottom: 20px; color: #00d4ff; }
 .btn-start { background: #00d4ff; color: #000; }
 .btn-stop { background: #e94560; color: white; }
 .btn-info { background: #533483; color: white; }
+.btn-danger { background: #c0392b; color: white; }
 .btn:disabled { opacity: 0.5; cursor: not-allowed; }
 .toggle { display: flex; justify-content: space-between; padding: 8px 0; border-bottom: 1px solid #333; }
 .toggle label { font-size: 13px; }
@@ -571,23 +611,26 @@ select { width: 100%; padding: 8px; border: 1px solid #333; border-radius: 4px; 
 </head>
 <body>
 <div class="container">
-  <h1>🔍 CMKA 实时目标检测</h1>
+  <h1>CMKA 实时目标检测</h1>
   <div class="main">
     <div>
       <div class="video-box">
         <span class="status stopped" id="status">未运行</span>
         <img id="feed" src="/video_feed">
-      </div>
-      <div class="stats">
-        <div class="stat"><label>FPS</label><value id="fps">0</value></div>
-        <div class="stat"><label>目标</label><value id="obj">0</value></div>
-        <div class="stat"><label>置信度</label><value id="conf">0</value></div>
+        <div class="stats-overlay">
+          <span><label>FPS</label><value id="fps">0</value></span>
+          <span><label>目标</label><value id="obj">0</value></span>
+          <span><label>置信度</label><value id="conf">0</value></span>
+        </div>
       </div>
     </div>
     <div class="panel">
       <h3>控制</h3>
-      <button class="btn btn-start" id="start" onclick="start()">▶ 开始检测</button>
-      <button class="btn btn-stop" id="stop" onclick="stop()" disabled>⏹ 停止检测</button>
+      <select id="camera" onchange="updateCamera()">
+        """ + cameras_html + """
+      </select>
+      <button class="btn btn-start" id="start" onclick="start()">开始检测</button>
+      <button class="btn btn-stop" id="stop" onclick="stop()" disabled>停止检测</button>
       
       <h3>设置</h3>
       <div class="toggle"><label>轨迹线</label><input type="checkbox" checked onchange="set('show_trajectory', this.checked)"></div>
@@ -600,33 +643,34 @@ select { width: 100%; padding: 8px; border: 1px solid #333; border-radius: 4px; 
         <option value="https://github.com/ultralytics/assets/releases/download/v8.3.0/yolov8s.pt">YOLOv8s (标准)</option>
         <option value="https://github.com/ultralytics/assets/releases/download/v8.3.0/yolov8m.pt">YOLOv8m (中)</option>
       </select>
-      <button class="btn btn-info" onclick="download()">⬇ 下载模型</button>
-      <button class="btn btn-info" onclick="reload()">🔄 重载模型</button>
+      <button class="btn btn-info" onclick="download()">下载模型</button>
+      <button class="btn btn-info" onclick="reload()">重载模型</button>
       
       <h3>日志</h3>
-      <button class="btn btn-info" id="logStart" onclick="logStart()">📝 开始导出</button>
-      <button class="btn btn-info" id="logStop" onclick="logStop()" disabled>⏹ 停止导出</button>
+      <button class="btn btn-info" id="logStart" onclick="logStart()">开始导出</button>
+      <button class="btn btn-info" id="logStop" onclick="logStop()" disabled>停止导出</button>
       
-      <h3>配置</h3>
-      <button class="btn btn-info" onclick="save()">💾 保存配置</button>
+      <h3>服务器</h3>
+      <button class="btn btn-danger" onclick="shutdown()">关闭服务器</button>
     </div>
   </div>
 </div>
 <script>
-let running = false, exporting = false;
+let running = false, exporting = false, cameraId = 0;
 async function req(url, method='POST', data=null) {
   const opts = { method, headers: data ? {'Content-Type':'application/json'} : {} };
   if (data) opts.body = JSON.stringify(data);
   return (await fetch(url, opts)).json();
 }
-async function start() { const res = await req('/start'); if (res.ok) { running = true; updateUI(); } }
+function updateCamera() { cameraId = parseInt(document.getElementById('camera').value); }
+async function start() { const res = await req('/start?camera_id=' + cameraId); if (res.ok) { running = true; updateUI(); } }
 async function stop() { const res = await req('/stop'); if (res.ok) { running = false; updateUI(); } }
 async function set(key, val) { await req('/settings', 'PUT', { [key]: val }); }
 async function download() { const res = await req('/download', 'POST', { url: document.getElementById('model').value }); alert(res.ok ? '下载成功' : '下载失败'); }
 async function reload() { const res = await req('/reload'); alert(res.ok ? '重载成功' : '重载失败'); }
 async function logStart() { const res = await req('/log_start'); if (res.ok) { exporting = true; updateUI(); } }
 async function logStop() { const res = await req('/log_stop'); if (res.ok) { exporting = false; updateUI(); } }
-async function save() { const res = await req('/save'); alert(res.ok ? '保存成功' : '保存失败'); }
+async function shutdown() { if(confirm('确定要关闭服务器吗？')) { await req('/shutdown'); } }
 function updateUI() {
   const s = document.getElementById('status');
   s.className = 'status ' + (running ? 'running' : 'stopped');
@@ -637,10 +681,12 @@ function updateUI() {
   document.getElementById('logStop').disabled = !exporting;
 }
 setInterval(async () => {
-  const stats = await (await fetch('/stats')).json();
-  document.getElementById('fps').textContent = stats.fps;
-  document.getElementById('obj').textContent = stats.total_objects;
-  document.getElementById('conf').textContent = stats.avg_conf.toFixed(3);
+  try {
+    const stats = await (await fetch('/stats')).json();
+    document.getElementById('fps').textContent = stats.fps;
+    document.getElementById('obj').textContent = stats.total_objects;
+    document.getElementById('conf').textContent = stats.avg_conf.toFixed(3);
+  } catch(e) {}
 }, 500);
 </script>
 </body>
@@ -700,8 +746,17 @@ setInterval(async () => {
     async def save_settings():
         return {"ok": engine.save_settings()}
 
+    @app.post("/shutdown")
+    async def shutdown():
+        nonlocal camera_running
+        with running_lock:
+            camera_running = False
+        import os
+        os._exit(0)
+        return {"ok": True}
+
     import uvicorn
-    print(f"🌐 Web UI: http://localhost:{port}")
+    print(f"Web UI: http://localhost:{port}")
     uvicorn.run(app, host=host, port=port, log_level="info")
 
 
@@ -1377,20 +1432,28 @@ def run_qt():
             fail_count = 0
             max_fail = 30
             
-            while self.running:
-                try:
+            try:
+                while self.running:
+                    if not self.running:
+                        break
+                        
                     ret, frame = cap.read()
                     if not ret:
                         fail_count += 1
-                        print(f"摄像头读取失败 ({fail_count}/{max_fail})")
                         if fail_count >= max_fail:
-                            print("摄像头连续失败，停止检测")
                             break
                         time.sleep(0.1)
                         continue
                     fail_count = 0
                     
+                    if not self.running:
+                        break
+                        
                     frame, stats = self.engine.process_frame(frame)
+                    
+                    if not self.running:
+                        break
+                        
                     self.stats_signal.emit(stats)
                     
                     rgb_image = cv2.cvtColor(frame, cv2.COLOR_BGR2RGB)
@@ -1398,16 +1461,15 @@ def run_qt():
                     bytes_per_line = ch * w
                     convert_to_Qt_format = QImage(rgb_image.data, w, h, bytes_per_line, QImage.Format_RGB888)
                     self.change_pixmap_signal.emit(convert_to_Qt_format.copy())
-                except Exception as e:
-                    print(f"视频处理错误: {e}")
-                    continue
-            
-            cap.release()
-            print("摄像头已释放")
+            except Exception as e:
+                print(f"视频处理错误: {e}")
+            finally:
+                cap.release()
+                print("摄像头已释放")
         
         def stop(self):
             self.running = False
-            self.wait()
+            self.wait(5000)  # 最多等待5秒
 
     class MainWindow(QMainWindow):
         def __init__(self, camera_id, engine):
@@ -1415,6 +1477,8 @@ def run_qt():
             self.setWindowFlags(Qt.FramelessWindowHint | Qt.Window)
             self.setAttribute(Qt.WA_TranslucentBackground)
             self.setGeometry(100, 100, 980, 740)
+            self.setMinimumSize(800, 600)
+            self.setMaximumSize(1920, 1080)
             
             self.engine = engine
             
@@ -1467,8 +1531,7 @@ def run_qt():
             
             self.video_label = QLabel()
             self.video_label.setAlignment(Qt.AlignCenter)
-            self.video_label.setStyleSheet("background-color: black;")
-            self.video_label.setScaledContents(True)
+            self.video_label.setStyleSheet("background-color: black; border-radius: 10px;")
             video_layout.addWidget(self.video_label, 1)
             
             self.stats_label = QLabel("FPS: 0.0 | 目标: 0 | 平均置信度: 0.000")
@@ -1577,6 +1640,8 @@ def run_qt():
         def start_detection(self):
             if self.log_export_dialog is None:
                 self.log_export_dialog = LogExportDialog(self.engine, self)
+            if self.thread and self.thread.isRunning():
+                return
             self.thread = VideoThread(self.camera_id, self.engine)
             self.thread.change_pixmap_signal.connect(self.update_image)
             self.thread.stats_signal.connect(self.update_stats)
@@ -1585,7 +1650,7 @@ def run_qt():
             self.stop_button.setEnabled(True)
         
         def stop_detection(self):
-            if self.thread:
+            if self.thread and self.thread.isRunning():
                 self.thread.stop()
                 self.thread = None
             self.start_button.setEnabled(True)
@@ -1593,7 +1658,10 @@ def run_qt():
             self.stats_label.setText("FPS: 0.0 | 目标: 0 | 平均置信度: 0.000")
         
         def update_image(self, qt_image):
-            self.video_label.setPixmap(QPixmap.fromImage(qt_image))
+            pixmap = QPixmap.fromImage(qt_image)
+            label_size = self.video_label.size()
+            scaled_pixmap = pixmap.scaled(label_size, Qt.KeepAspectRatio, Qt.SmoothTransformation)
+            self.video_label.setPixmap(scaled_pixmap)
         
         def update_stats(self, stats):
             try:
@@ -1648,6 +1716,19 @@ def run_qt():
     
     app = QApplication(sys.argv)
     
+    print("正在加载YOLO模型...")
+    try:
+        from ultralytics import YOLO
+        if os.path.exists(engine.pt_model_path):
+            engine.model = YOLO(engine.pt_model_path)
+            engine.use_ultralytics = True
+            engine.classes = engine.model.names
+            print(f"YOLO模型加载成功: {engine.pt_model_path}")
+        else:
+            print(f"警告: 未找到模型文件: {engine.pt_model_path}")
+    except ImportError:
+        print("未安装 ultralytics 库，请运行: pip install ultralytics")
+    
     camera_dialog = CameraSelectDialog()
     selected_camera = int(engine.settings.get("camera_id", 0))
     if camera_dialog.exec_():
@@ -1696,7 +1777,7 @@ def show_mode_selection():
             layout.setSpacing(15)
             layout.setContentsMargins(20, 20, 20, 20)
 
-            title = QLabel("🔍 CMKA 实时目标检测")
+            title = QLabel("CMKA 实时目标检测")
             title.setFont(QFont("Microsoft YaHei", 24, QFont.Bold))
             title.setStyleSheet("color: white; padding: 25px; background: linear-gradient(135deg, #667eea 0%, #764ba2 100%); border-radius: 15px;")
             title.setAlignment(Qt.AlignCenter)
@@ -1712,7 +1793,7 @@ def show_mode_selection():
             button_layout.setSpacing(25)
             button_layout.setContentsMargins(50, 0, 50, 0)
 
-            qt_button = QPushButton("🖥️\n桌面模式")
+            qt_button = QPushButton("桌面模式")
             qt_button.setFont(QFont("Microsoft YaHei", 13, QFont.Bold))
             qt_button.setStyleSheet("""
                 QPushButton {
@@ -1731,7 +1812,7 @@ def show_mode_selection():
             qt_button.clicked.connect(lambda: self.select_mode("qt"))
             button_layout.addWidget(qt_button)
 
-            web_button = QPushButton("🌐\n网页模式")
+            web_button = QPushButton("网页模式")
             web_button.setFont(QFont("Microsoft YaHei", 13, QFont.Bold))
             web_button.setStyleSheet("""
                 QPushButton {
@@ -1780,7 +1861,6 @@ def show_mode_selection():
             self.selected_mode = mode
             self.accept()
 
-    app = QApplication(sys.argv)
     dialog = ModeSelectDialog()
     if dialog.exec_():
         return dialog.selected_mode
@@ -1873,7 +1953,10 @@ def main():
                 _web_server_process = subprocess.Popen([sys.executable, __file__, "--mode", "web", "--port", str(args.port), "--host", args.host])
                 print(f"Web模式已启动，访问: http://localhost:{args.port}")
                 print("按 Enter 键停止Web服务器并返回模式选择...")
-                input()
+                try:
+                    input()
+                except (EOFError, KeyboardInterrupt):
+                    pass
                 stop_web_server(port=args.port)
                 print("Web服务器已停止")
                 args.mode = None

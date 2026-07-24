@@ -496,6 +496,7 @@ def run_web(host="0.0.0.0", port=8000):
     current_frame = None
     current_stats = {"fps": 0.0, "avg_conf": 0.0, "total_objects": 0}
     frame_lock = threading.Lock()
+    running_lock = threading.Lock()
 
     def camera_loop(camera_id=0):
         nonlocal camera_running, current_frame, current_stats
@@ -503,16 +504,22 @@ def run_web(host="0.0.0.0", port=8000):
         if not cap.isOpened():
             print("摄像头打开失败")
             return
-        while camera_running:
-            ret, frame = cap.read()
-            if not ret:
-                time.sleep(0.1)
-                continue
-            frame, stats = engine.process_frame(frame)
-            with frame_lock:
-                current_frame, current_stats = frame, stats
-        cap.release()
-        camera_running = False
+        try:
+            while True:
+                with running_lock:
+                    if not camera_running:
+                        break
+                ret, frame = cap.read()
+                if not ret:
+                    time.sleep(0.1)
+                    continue
+                frame, stats = engine.process_frame(frame)
+                with frame_lock:
+                    current_frame, current_stats = frame, stats
+        finally:
+            cap.release()
+            with running_lock:
+                camera_running = False
 
     def gen_frames():
         while True:
@@ -647,16 +654,18 @@ setInterval(async () => {
     @app.post("/start")
     async def start(camera_id: int = 0):
         nonlocal camera_running
-        if camera_running:
-            return {"ok": False}
-        camera_running = True
+        with running_lock:
+            if camera_running:
+                return {"ok": False}
+            camera_running = True
         threading.Thread(target=camera_loop, args=(camera_id,), daemon=True).start()
         return {"ok": True}
 
     @app.post("/stop")
     async def stop():
         nonlocal camera_running
-        camera_running = False
+        with running_lock:
+            camera_running = False
         return {"ok": True}
 
     @app.get("/stats")
@@ -1774,15 +1783,7 @@ def show_mode_selection():
     return None
 
 
-_web_server_thread = None
 _web_server_process = None
-
-
-def run_web_in_thread(host, port):
-    global _web_server_thread
-    import threading
-    _web_server_thread = threading.Thread(target=run_web, args=(host, port), daemon=True)
-    _web_server_thread.start()
 
 
 def check_port_used(port):
@@ -1849,29 +1850,32 @@ def main():
     parser.add_argument("--host", default="0.0.0.0", help="Web监听地址")
     args = parser.parse_args()
 
-    mode = args.mode
-    is_cli = mode is not None
+    is_cli = args.mode is not None
 
-    if mode is None:
-        mode = show_mode_selection()
+    while True:
+        mode = args.mode
         if mode is None:
-            print("用户取消选择，程序退出")
-            return
+            mode = show_mode_selection()
+            if mode is None:
+                print("用户取消选择，程序退出")
+                return
 
-    if mode == "web":
-        if is_cli:
-            run_web(host=args.host, port=args.port)
+        if mode == "web":
+            if is_cli:
+                run_web(host=args.host, port=args.port)
+                return
+            else:
+                import subprocess
+                _web_server_process = subprocess.Popen([sys.executable, __file__, "--mode", "web", "--port", str(args.port), "--host", args.host])
+                print(f"Web模式已启动，访问: http://localhost:{args.port}")
+                print("按 Enter 键停止Web服务器并返回模式选择...")
+                input()
+                stop_web_server(port=args.port)
+                print("Web服务器已停止")
+                args.mode = None
         else:
-            import subprocess
-            _web_server_process = subprocess.Popen([sys.executable, __file__, "--mode", "web", "--port", str(args.port), "--host", args.host])
-            print(f"Web模式已启动，访问: http://localhost:{args.port}")
-            print("按 Enter 键停止Web服务器并返回模式选择...")
-            input()
-            stop_web_server(port=args.port)
-            print("Web服务器已停止")
-            main()
-    else:
-        run_qt()
+            run_qt()
+            return
 
 
 if __name__ == "__main__":

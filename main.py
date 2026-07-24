@@ -1785,7 +1785,13 @@ def run_web_in_thread(host, port):
     _web_server_thread.start()
 
 
-def stop_web_server():
+def check_port_used(port):
+    import socket
+    with socket.socket(socket.AF_INET, socket.SOCK_STREAM) as s:
+        return s.connect_ex(('127.0.0.1', port)) == 0
+
+
+def stop_web_server(port=8000):
     global _web_server_process
     if _web_server_process:
         pid = _web_server_process.pid
@@ -1822,6 +1828,16 @@ def stop_web_server():
             pass
         
         _web_server_process = None
+        
+        import time
+        for i in range(10):
+            if not check_port_used(port):
+                print(f"端口 {port} 已释放")
+                break
+            time.sleep(0.5)
+        else:
+            print(f"警告: 端口 {port} 可能仍被占用")
+        
         print("Web服务器已完全停止")
 
 
@@ -1851,7 +1867,7 @@ def main():
             print(f"Web模式已启动，访问: http://localhost:{args.port}")
             print("按 Enter 键停止Web服务器并返回模式选择...")
             input()
-            stop_web_server()
+            stop_web_server(port=args.port)
             print("Web服务器已停止")
             main()
     else:

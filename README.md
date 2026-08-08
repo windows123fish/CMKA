@@ -89,7 +89,7 @@ python main.py
 ## 系统要求
 
 - Windows 10/11 (64-bit)
-- Python 3.12+
+- Python 3.12
 - 至少 4GB RAM
 
 我求求你们改一下代码吧😭我改不过来了😭

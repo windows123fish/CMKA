@@ -97,6 +97,7 @@ python main.py
 ---
 
 *基于 PyQt5 & YOLO 构建*
+
 bug
 我那知道呀
 有bug提issues😡

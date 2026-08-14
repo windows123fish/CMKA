@@ -265,17 +265,13 @@ class DetectionEngine:
             'book', 'clock', 'vase', 'scissors', 'teddy bear', 'hair drier', 'toothbrush'
         ])}
         self._load_state()
-<<<<<<< Updated upstream
-        self._load_model()
-        
-        self.tracker = ObjectTracker(iou_threshold=self.iou_threshold, tracker_mode=self.tracker_mode, max_missing=self.max_missing)
-=======
-        self.tracker = ObjectTracker(
-            iou_threshold=self.iou_threshold,
-            tracker_mode=self.tracker_mode,
-            max_missing=self.max_missing,
-        )
->>>>>>> Stashed changes
+self._load_model()
+
+self.tracker = ObjectTracker(
+    iou_threshold=self.iou_threshold,
+    tracker_mode=self.tracker_mode,
+    max_missing=self.max_missing,
+)
         self.stats_aggregator = StatsAggregator()
         self.log_path = None
         self.exporting = False

@@ -348,8 +348,9 @@ class MainWindow(QMainWindow):
         self.start_button.setEnabled(True)
         self.stop_button.setEnabled(False)
         self.stats_label.setText("帧率: 0.0 | 目标: 0 | 平均置信度: 0.000")
-        # 只重置帧相关计数，总检测数保持累计
+        self.class_counts.clear()
         self.total_detections = 0
+        self.total_label.setText("总检测数：0")
         self._refresh_stats()
 
     def _update_image(self, qt_image: QImage) -> None:
@@ -368,9 +369,9 @@ class MainWindow(QMainWindow):
             pass
 
         class_counts = stats.get("类别统计", {}) if isinstance(stats, dict) else {}
-        if isinstance(class_counts, dict) and class_counts:
+        if isinstance(class_counts, dict):
             self.class_counts = defaultdict(int, {k: int(v) for k, v in class_counts.items()})
-            self.total_detections = sum(self.class_counts.values())
+            self.total_detections += int(stats.get("目标总数", 0))
             self.total_label.setText(f"总检测数：{self.total_detections}")
             self._update_stats_grid(stats)
 

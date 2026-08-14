@@ -69,6 +69,7 @@ class DetectionEngine:
         self.tracker_mode: str = str(s.get("tracker_mode", "classic") or "classic")
         self.max_missing: int = int(s.get("max_missing", 10) or 10)
         self.iou_threshold: float = float(s.get("iou_threshold", 0.25) or 0.25)
+        self.conf_threshold: float = float(s.get("conf_threshold", 0.5) or 0.5)
 
     def get_classes(self) -> Dict[int, str]:
         return dict(self.classes)
@@ -84,6 +85,7 @@ class DetectionEngine:
                 "tracker_mode": self.tracker_mode,
                 "max_missing": self.max_missing,
                 "iou_threshold": self.iou_threshold,
+                "conf_threshold": self.conf_threshold,
             }
 
     def get_model_path(self) -> str:
@@ -107,6 +109,8 @@ class DetectionEngine:
                 self.max_missing = int(value)
             elif key == "iou_threshold":
                 self.iou_threshold = float(value)
+            elif key == "conf_threshold":
+                self.conf_threshold = float(value)
 
     def save_settings(self) -> bool:
         settings = {
@@ -118,6 +122,7 @@ class DetectionEngine:
             "tracker_mode": self.tracker_mode,
             "max_missing": self.max_missing,
             "iou_threshold": self.iou_threshold,
+            "conf_threshold": self.conf_threshold,
             "camera_id": int(self.settings.get("camera_id", 0)),
             "model_url": self.settings.get("model_url", DEFAULT_CONFIG["model_url"]),
         }
@@ -219,7 +224,7 @@ class DetectionEngine:
     def _run_detection(self, frame: np.ndarray, model: Any, classes: Dict[int, str], disabled: Set[str]) -> List[Tuple]:
         detections: List[Tuple] = []
         try:
-            results = model(frame, conf=0.5, iou=0.45, verbose=False)
+            results = model(frame, conf=self.conf_threshold, iou=0.45, verbose=False)
             for result in results:
                 for box in result.boxes:
                     x1, y1, x2, y2 = map(int, box.xyxy[0])

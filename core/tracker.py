@@ -113,7 +113,12 @@ class ObjectTracker:
             if obj not in new_tracked:
                 obj.missing_frames += 1
 
-        # 清理丢失目标
-        self.tracked_objects = [obj for obj in self.tracked_objects if not obj.is_lost()]
-        self.tracked_objects.extend([obj for obj in new_tracked if obj not in self.tracked_objects])
+        # 清理丢失目标，合并新追踪结果
+        surviving = [obj for obj in self.tracked_objects if not obj.is_lost()]
+        new_ids = {obj.track_id for obj in surviving}
+        for obj in new_tracked:
+            if obj.track_id not in new_ids:
+                surviving.append(obj)
+                new_ids.add(obj.track_id)
+        self.tracked_objects = surviving
         return self.tracked_objects

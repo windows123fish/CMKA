@@ -39,11 +39,8 @@ def run_qt() -> None:
     engine = DetectionEngine(base_path)
 
     app = QApplication(sys.argv)
-    logger.info("正在加载YOLO模型...")
-    try:
-        engine._lazy_load_model()
-    except RuntimeError as exc:
-        QMessageBox.critical(None, "模型加载失败", str(exc))
+    if not engine.use_ultralytics:
+        QMessageBox.critical(None, "模型加载失败", "YOLO模型加载失败，请检查模型文件是否存在。")
         sys.exit(1)
 
     camera_dialog = CameraSelectDialog()
@@ -57,12 +54,6 @@ def run_qt() -> None:
     window = MainWindow(selected_camera, engine)
     window.show()
     sys.exit(app.exec_())
-
-
-def run_web(host: str = "0.0.0.0", port: int = 8000) -> None:
-    """启动 Web 模式"""
-    from core.web import run_web as _run_web
-    _run_web(host, port)
 
 
 def main() -> None:

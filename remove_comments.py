@@ -15,28 +15,19 @@ def remove_comments(filepath):
                 in_multiline = False
             continue
         
-        # Check for multiline start
         if '"""' in line or "'''" in line:
-            # Count occurrences
             count = line.count('"""') + line.count("'''")
             if count % 2 != 0:
                 in_multiline = True
             
-            # Remove the multiline string
             line = re.sub(r'"""[\s\S]*?"""', '', line)
             line = re.sub(r"'''[\s\S]*?'''", '', line)
-        
-        # Remove inline comments (but not inside strings)
         if not in_multiline:
             line = re.sub(r'#.*$', '', line)
-        
         new_lines.append(line)
-    
     new_content = '\n'.join(new_lines)
     with open(filepath, 'w', encoding='utf-8') as f:
         f.write(new_content)
-
-# Process all python files
 files = [
     'd:/main/CMKA/main.py',
     'd:/main/CMKA/core/config.py',

@@ -33,6 +33,11 @@ CMKA is a real-time object detection application based on **YOLO26n** and **Ultr
 - ✅ **Trajectory Drawing** - Record and draw object movement path (except for person)
 - ✅ **Position Prediction** - Predict next frame position (except for person)
 - ✅ **Trajectory Settings** - Customizable trajectory display and colors
+- ✅ **Model Management** - Browse and load custom YOLO models
+- ✅ **Log Export** - Export detection logs to CSV files
+- ✅ **Real-time Statistics** - Live detection count and per-class stats sidebar
+- ✅ **Camera Switching** - Switch cameras during detection
+- ✅ **Save Configuration** - Persist current settings
 - ✅ **Elegant UI** - Custom title bar and rounded window design
 - ✅ **Window Controls** - Minimize, maximize, and drag operations
 
@@ -65,13 +70,15 @@ python main.py
 4. Click "Start Detection" to begin real-time detection
 5. Click "Disable Categories" to exclude specific objects
 6. Click "Track Settings" to configure trajectory display and colors
+7. Click "Model Manage" to browse and load custom YOLO models
+8. Click "Log Export" to export detection logs to CSV
+9. Click "Save Config" to persist current settings
 
 ## Track Settings
 
-- **Show Trajectory** - Display object movement path when checked
-- **Show Prediction** - Display predicted next position (yellow dot) when checked
-- **Trajectory Color** - Red, Blue, Green, Yellow, Purple, White
-- **Prediction Color** - Yellow, Red, Blue, Green, Purple, White
+- **Max Missing Frames** - Maximum frames an object can be missing before being removed
+- **Tracking IoU Threshold** - Adjust IoU threshold for object association (0.10 - 0.50)
+- **Confidence Threshold** - Minimum confidence for detection (0.10 - 0.90)
 
 > **Note**: Trajectory and prediction are not displayed for person (face) detections
 

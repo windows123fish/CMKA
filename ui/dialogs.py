@@ -1,597 +1,458 @@
-"""UI 对话框模块"""
-
 import os
-import sys
-from typing import Any, Callable, Dict, List, Optional, Tuple
+from typing import Any, Dict, Optional, Tuple
 
 from PyQt5.QtCore import Qt
 from PyQt5.QtGui import QColor, QFont
 from PyQt5.QtWidgets import (
-    QApplication,
     QCheckBox,
-    QColorDialog,
-    QComboBox,
     QDialog,
+    QFileDialog,
+    QFormLayout,
+    QGridLayout,
     QGroupBox,
     QHBoxLayout,
     QLabel,
+    QLineEdit,
     QListWidget,
     QListWidgetItem,
     QMessageBox,
     QPushButton,
-    QScrollArea,
+    QSlider,
+    QSpinBox,
     QVBoxLayout,
     QWidget,
 )
 
-from core.config import MAX_CAMERA_SCAN, MODEL_LIST, UI_COLORS, UI_FONT_FAMILY, UI_SIZES
-from core.detector import DetectionEngine
+from core.config import UI_COLORS, UI_FONT_FAMILY, UI_SIZES
 from core.utils import get_logs_dir, logger
 
 
+def _update_custom_button(button: QPushButton, color: Tuple[int, int, int]) -> None:
+    if len(color) == 3:
+        b, g, r = int(color[0]), int(color[1]), int(color[2])
+    else:
+        r, g, b = 0, 0, 0
+    button.setStyleSheet(
+        f"background-color: rgb({r}, {g}, {b}); "
+        f"border-radius: 5px; border: 2px solid {UI_COLORS['teal']};"
+    )
+
+
 class BaseDialog(QDialog):
-    """对话框基类"""
-
-    def __init__(self, title: str, width: int, height: int, parent: Optional[QWidget] = None) -> None:
+    def __init__(self, parent: Optional[QWidget] = None) -> None:
         super().__init__(parent)
-        self.setWindowTitle(title)
-        self.setFixedSize(width, height)
-        self.setStyleSheet("background-color: white;")
+        self.setWindowFlags(Qt.Dialog | Qt.FramelessWindowHint)
+        self.setAttribute(Qt.WA_TranslucentBackground)
+        self.setModal(True)
 
-        self._root_layout = QVBoxLayout(self)
-        self._root_layout.setSpacing(15)
-        self._root_layout.setContentsMargins(20, 20, 20, 20)
+    def _setup_dialog(self, title: str, width: int = 400, height: int = 300) -> None:
+        container = QWidget(self)
+        container.setGeometry(0, 0, width, height)
+        container.setStyleSheet(
+            f"background-color: {UI_COLORS['panel_bg']}; "
+            f"border-radius: {UI_SIZES['dialog_radius']}px;"
+        )
+        layout = QVBoxLayout(container)
+        layout.setContentsMargins(0, 0, 0, 0)
 
-        self._add_header(title)
-
-    def _add_header(self, title: str) -> None:
         header = QWidget()
-        header.setStyleSheet(f"background-color: {UI_COLORS['header_bg']}; border-radius: {UI_SIZES['header_radius']}px;")
-        header.setFixedHeight(UI_SIZES["title_bar_height"])
+        header.setFixedHeight(40)
+        header.setStyleSheet(f"background-color: {UI_COLORS['header_bg']}; border-radius: {UI_SIZES['dialog_radius']}px;")
+        header_layout = QHBoxLayout(header)
+        header_layout.setContentsMargins(15, 0, 10, 0)
 
-        layout = QHBoxLayout(header)
-        layout.setContentsMargins(20, 0, 20, 0)
-
-        label = QLabel(title)
-        label.setFont(QFont(UI_FONT_FAMILY, UI_SIZES["dialog_title_font"], QFont.Bold))
-        label.setStyleSheet("color: white; background: transparent;")
-        layout.addWidget(label, 1)
+        title_label = QLabel(title)
+        title_label.setFont(QFont(UI_FONT_FAMILY, 14, QFont.Bold))
+        title_label.setStyleSheet("color: white;")
+        header_layout.addWidget(title_label, 1, Qt.AlignLeft | Qt.AlignVCenter)
 
         close_btn = QPushButton("×")
-        close_btn.setFixedSize(UI_SIZES["close_btn"], UI_SIZES["close_btn"])
-        close_btn.setStyleSheet(
-            f"background-color: {UI_COLORS['header_close']}; color: white; "
-            f"border-radius: {UI_SIZES['close_btn'] // 2}px; font-size: 24px; border: none;"
-        )
+        close_btn.setFixedSize(30, 30)
+        close_btn.setStyleSheet(f"background-color: {UI_COLORS['primary']}; color: white; border-radius: 15px; font-size: 16px;")
         close_btn.clicked.connect(self.reject)
-        layout.addWidget(close_btn, 0, Qt.AlignRight)
+        header_layout.addWidget(close_btn, Qt.AlignRight | Qt.AlignVCenter)
 
-        self._root_layout.addWidget(header)
+        layout.addWidget(header)
+        self.content_widget = QWidget()
+        self.content_layout = QVBoxLayout(self.content_widget)
+        self.content_layout.setContentsMargins(20, 20, 20, 20)
+        self.content_layout.setSpacing(12)
+        layout.addWidget(self.content_widget, 1)
 
-    def _make_label(
-        self,
-        text: str,
-        font_size: int = UI_SIZES["body_font"],
-        color: str = UI_COLORS["body_text"],
-        bold: bool = False,
-        align: int = Qt.AlignLeft,
-    ) -> QLabel:
-        label = QLabel(text)
-        weight = QFont.Bold if bold else QFont.Normal
-        label.setFont(QFont(UI_FONT_FAMILY, font_size, weight))
-        label.setStyleSheet(f"color: {color};")
-        label.setAlignment(align)
-        return label
+        self.dragging = False
+        self.drag_start_pos = None
+        header.installEventFilter(self)
 
-    def _make_button(
-        self,
-        text: str,
-        bg_color: str = UI_COLORS["primary"],
-        font_size: int = UI_SIZES["body_bold_font"],
-        padding: str = "10px",
-    ) -> QPushButton:
-        btn = QPushButton(text)
-        btn.setFont(QFont(UI_FONT_FAMILY, font_size, QFont.Bold))
-        btn.setStyleSheet(
-            f"background-color: {bg_color}; color: white; "
-            f"border-radius: {UI_SIZES['btn_radius']}px; padding: {padding};"
-        )
-        return btn
+    def eventFilter(self, obj: Any, event: Any) -> bool:
+        if event.type() == 6 and event.button() == Qt.LeftButton:
+            self.dragging = True
+            self.drag_start_pos = event.globalPos() - self.frameGeometry().topLeft()
+            return True
+        if event.type() == 8 and self.dragging:
+            self.move(event.globalPos() - self.drag_start_pos)
+            return True
+        if event.type() == 7:
+            self.dragging = False
+            return True
+        return super().eventFilter(obj, event)
 
-    def _finish_layout(self) -> None:
-        self._root_layout.addStretch()
-
-
-class ModeSelectDialog(BaseDialog):
-    """模式选择对话框"""
-
-    def __init__(self, parent: Optional[QWidget] = None) -> None:
-        super().__init__("选择模式", 400, 300, parent)
-        self.selected_mode: Optional[str] = None
-
-        self._root_layout.addStretch()
-
-        title = QLabel("CMKA 目标检测系统")
-        title.setFont(QFont(UI_FONT_FAMILY, UI_SIZES["dialog_title_bold_font"], QFont.Bold))
-        title.setAlignment(Qt.AlignCenter)
-        title.setStyleSheet(f"color: {UI_COLORS['primary']};")
-        self._root_layout.addWidget(title)
-
-        subtitle = QLabel("请选择运行模式")
-        subtitle.setFont(QFont(UI_FONT_FAMILY, UI_SIZES["body_font"]))
-        subtitle.setAlignment(Qt.AlignCenter)
-        subtitle.setStyleSheet(f"color: {UI_COLORS['info_text']};")
-        self._root_layout.addWidget(subtitle)
-
-        self._root_layout.addSpacing(20)
-
-        btn_layout = QHBoxLayout()
-        btn_layout.setSpacing(20)
-
-        qt_btn = self._make_button("桌面模式", UI_COLORS["primary"])
-        qt_btn.clicked.connect(lambda: self._select_mode("qt"))
-        btn_layout.addWidget(qt_btn)
-
-        web_btn = self._make_button("网页模式", UI_COLORS["secondary"])
-        web_btn.clicked.connect(lambda: self._select_mode("web"))
-        btn_layout.addWidget(web_btn)
-
-        self._root_layout.addLayout(btn_layout)
-        self._finish_layout()
-
-    def _select_mode(self, mode: str) -> None:
-        self.selected_mode = mode
-        self.accept()
+    def resizeEvent(self, event: Any) -> None:
+        if hasattr(self, "content_widget"):
+            self.content_widget.setGeometry(0, 40, self.width(), self.height() - 40)
+        super().resizeEvent(event)
 
 
 class CameraSelectDialog(BaseDialog):
-    """摄像头选择对话框"""
+    def __init__(self, parent: Optional[QWidget] = None, current_camera: int = 0) -> None:
+        super().__init__(parent)
+        self.selected_camera = current_camera
+        self._setup_dialog("选择摄像头", 350, 200)
+        self._build_ui()
 
-    def __init__(self, parent: Optional[QWidget] = None) -> None:
-        super().__init__("选择摄像头", 520, 480, parent)
-        self.selected_camera: Optional[int] = None
-        self._failed_cameras: List[int] = []
+    def _build_ui(self) -> None:
+        layout = QFormLayout()
+        layout.setSpacing(12)
 
-        self.camera_list = QListWidget()
-        self.camera_list.setFont(QFont(UI_FONT_FAMILY, UI_SIZES["body_font"]))
-        self.camera_list.setStyleSheet(
-            f"QListWidget {{ border: 1px solid {UI_COLORS['border_light']}; "
-            f"border-radius: {UI_SIZES['btn_radius']}px; padding: 10px; }}"
+        self.camera_spin = QSpinBox()
+        self.camera_spin.setRange(0, 10)
+        self.camera_spin.setValue(self.selected_camera)
+        self.camera_spin.setFont(QFont(UI_FONT_FAMILY, 12))
+        self.camera_spin.setStyleSheet(
+            f"padding: 6px; border: 1px solid {UI_COLORS['border_light']}; "
+            f"border-radius: {UI_SIZES['btn_radius']}px;"
         )
-        self._root_layout.addWidget(self.camera_list)
+        layout.addRow("摄像头 ID:", self.camera_spin)
 
-        self.info_label = self._make_label("正在扫描摄像头...", 10, UI_COLORS["info_text"], align=Qt.AlignCenter)
-        self._root_layout.addWidget(self.info_label)
+        self.content_layout.addLayout(layout)
 
         btn_layout = QHBoxLayout()
-        confirm_btn = self._make_button("确认", UI_COLORS["primary"])
-        confirm_btn.clicked.connect(self._on_confirm)
-        btn_layout.addWidget(confirm_btn)
+        btn_layout.setSpacing(10)
+        btn_layout.addStretch(1)
 
-        cancel_btn = self._make_button("取消", UI_COLORS["secondary"])
+        ok_btn = QPushButton("确定")
+        ok_btn.setFont(QFont(UI_FONT_FAMILY, 12))
+        ok_btn.setMinimumWidth(100)
+        ok_btn.setStyleSheet(
+            f"background-color: {UI_COLORS['primary']}; color: white; "
+            f"border-radius: {UI_SIZES['btn_radius']}px; padding: 8px;"
+        )
+        ok_btn.clicked.connect(self._on_ok)
+        btn_layout.addWidget(ok_btn)
+
+        cancel_btn = QPushButton("取消")
+        cancel_btn.setFont(QFont(UI_FONT_FAMILY, 12))
+        cancel_btn.setMinimumWidth(100)
+        cancel_btn.setStyleSheet(
+            f"background-color: {UI_COLORS['border_light']}; color: {UI_COLORS['body_text']}; "
+            f"border-radius: {UI_SIZES['btn_radius']}px; padding: 8px;"
+        )
         cancel_btn.clicked.connect(self.reject)
         btn_layout.addWidget(cancel_btn)
 
-        self._root_layout.addLayout(btn_layout)
-        self._finish_layout()
+        self.content_layout.addLayout(btn_layout)
 
-        self._scan_cameras()
-
-    def _scan_cameras(self) -> None:
-        import cv2
-        self.camera_list.clear()
-        self._failed_cameras = []
-
-        for i in range(MAX_CAMERA_SCAN):
-            cap = cv2.VideoCapture(i, cv2.CAP_DSHOW)
-            if cap.isOpened():
-                self.camera_list.addItem(f"摄像头 {i}（可用）")
-                cap.release()
-            else:
-                self.camera_list.addItem(f"摄像头 {i}（无法打开）")
-                item = self.camera_list.item(self.camera_list.count() - 1)
-                item.setForeground(QColor(UI_COLORS["primary"]))
-                self._failed_cameras.append(i)
-
-        if self._failed_cameras:
-            failed_str = ", ".join(str(i) for i in self._failed_cameras)
-            self.info_label.setText(f"以下摄像头无法打开：{failed_str}")
-            self.info_label.setStyleSheet(f"color: {UI_COLORS['primary']}; padding: 10px; font-weight: bold;")
-        else:
-            self.info_label.setText("所有扫描的摄像头均可正常使用")
-            self.info_label.setStyleSheet(f"color: {UI_COLORS['body_text']}; padding: 10px;")
-
-    def _on_confirm(self) -> None:
-        current = self.camera_list.currentRow()
-        if current >= 0:
-            self.selected_camera = current
-            self.accept()
-        else:
-            QMessageBox.warning(self, "警告", "请选择一个摄像头")
+    def _on_ok(self) -> None:
+        self.selected_camera = self.camera_spin.value()
+        self.accept()
 
 
 class DisableClassDialog(BaseDialog):
-    """禁用类别对话框"""
-
-    def __init__(self, engine: DetectionEngine, parent: Optional[QWidget] = None) -> None:
-        super().__init__("禁用类别", 500, 600, parent)
+    def __init__(self, engine: Any, parent: Optional[QWidget] = None) -> None:
+        super().__init__(parent)
         self.engine = engine
+        self.class_names: Dict[int, str] = engine.get_classes()
+        self.disabled_classes = set(engine.settings.get("disabled_classes", []))
+        self._setup_dialog("禁用类别", 420, 500)
+        self._build_ui()
 
-        scroll = QScrollArea()
-        scroll.setWidgetResizable(True)
-        scroll.setStyleSheet(
-            f"QScrollArea {{ border: 1px solid {UI_COLORS['scroll_border']}; "
-            f"border-radius: {UI_SIZES['btn_radius']}px; background-color: {UI_COLORS['scroll_bg']}; }}"
+    def _build_ui(self) -> None:
+        self.list_widget = QListWidget()
+        self.list_widget.setFont(QFont(UI_FONT_FAMILY, 11))
+        self.list_widget.setStyleSheet(
+            f"border: 1px solid {UI_COLORS['border_light']}; "
+            f"border-radius: {UI_SIZES['btn_radius']}px; padding: 6px;"
         )
 
-        scroll_content = QWidget()
-        scroll_layout = QVBoxLayout(scroll_content)
+        for class_id, name in sorted(self.class_names.items()):
+            item = QListWidgetItem(f"{name} (ID: {class_id})")
+            item.setData(Qt.UserRole, class_id)
+            item.setFlags(item.flags() | Qt.ItemIsUserCheckable)
+            item.setCheckState(Qt.Unchecked if class_id in self.disabled_classes else Qt.Checked)
+            self.list_widget.addItem(item)
 
-        self.checkboxes: List[Tuple[str, QCheckBox]] = []
-        classes = self.engine.get_classes()
-        disabled = set(self.engine.get_settings()["disabled_classes"])
+        self.content_layout.addWidget(self.list_widget)
 
-        for class_id, class_name in sorted(classes.items()):
-            cb = QCheckBox(f"{class_id}. {class_name}")
-            cb.setFont(QFont(UI_FONT_FAMILY, UI_SIZES["small_font"]))
-            cb.setStyleSheet(f"padding: 5px; color: {UI_COLORS['label_text']};")
-            if class_name in disabled:
-                cb.setChecked(True)
-            self.checkboxes.append((class_name, cb))
-            scroll_layout.addWidget(cb)
-
-        scroll_layout.addStretch()
-        scroll.setWidget(scroll_content)
-        self._root_layout.addWidget(scroll)
+        self.hint_label = QLabel("取消勾选 = 禁用该类别的检测")
+        self.hint_label.setFont(QFont(UI_FONT_FAMILY, 10))
+        self.hint_label.setStyleSheet(f"color: {UI_COLORS['label_text']};")
+        self.content_layout.addWidget(self.hint_label)
 
         btn_layout = QHBoxLayout()
-        clear_btn = self._make_button("清除全部", UI_COLORS["border_light"])
-        clear_btn.clicked.connect(self._clear_all)
-        btn_layout.addWidget(clear_btn)
-        save_btn = self._make_button("保存", UI_COLORS["primary"])
-        save_btn.clicked.connect(self._save_and_close)
-        btn_layout.addWidget(save_btn)
-        self._root_layout.addLayout(btn_layout)
-        self._finish_layout()
+        btn_layout.setSpacing(10)
+        btn_layout.addStretch(1)
 
-    def _clear_all(self) -> None:
-        for _, cb in self.checkboxes:
-            cb.setChecked(False)
+        ok_btn = QPushButton("保存")
+        ok_btn.setFont(QFont(UI_FONT_FAMILY, 12))
+        ok_btn.setMinimumWidth(100)
+        ok_btn.setStyleSheet(
+            f"background-color: {UI_COLORS['primary']}; color: white; "
+            f"border-radius: {UI_SIZES['btn_radius']}px; padding: 8px;"
+        )
+        ok_btn.clicked.connect(self._save)
+        btn_layout.addWidget(ok_btn)
 
-    def _save_and_close(self) -> None:
-        disabled = [name for name, cb in self.checkboxes if cb.isChecked()]
-        self.engine.set_setting("disabled_classes", disabled)
-        QMessageBox.information(self, "成功", f"已禁用 {len(disabled)} 个类别")
+        cancel_btn = QPushButton("取消")
+        cancel_btn.setFont(QFont(UI_FONT_FAMILY, 12))
+        cancel_btn.setMinimumWidth(100)
+        cancel_btn.setStyleSheet(
+            f"background-color: {UI_COLORS['border_light']}; color: {UI_COLORS['body_text']}; "
+            f"border-radius: {UI_SIZES['btn_radius']}px; padding: 8px;"
+        )
+        cancel_btn.clicked.connect(self.reject)
+        btn_layout.addWidget(cancel_btn)
+
+        self.content_layout.addLayout(btn_layout)
+
+    def _save(self) -> None:
+        disabled = []
+        for index in range(self.list_widget.count()):
+            item = self.list_widget.item(index)
+            if item.checkState() == Qt.Unchecked:
+                disabled.append(item.data(Qt.UserRole))
+        self.engine.settings["disabled_classes"] = disabled
+        self.engine._apply_disabled_classes()
         self.accept()
 
 
 class TrackSettingsDialog(BaseDialog):
-    """轨迹设置对话框"""
-
-    HEADER_BG = UI_COLORS["teal"]
-    CLOSE_BG = UI_COLORS["teal_light"]
-
-    def __init__(self, engine: DetectionEngine, parent: Optional[QWidget] = None) -> None:
-        super().__init__("轨迹设置", 520, 520, parent)
+    def __init__(self, engine: Any, parent: Optional[QWidget] = None) -> None:
+        super().__init__(parent)
         self.engine = engine
-        settings = self.engine.get_settings()
+        self._setup_dialog("轨迹设置", 420, 280)
+        self._build_ui()
 
-        scroll = QScrollArea()
-        scroll.setWidgetResizable(True)
-        scroll.setStyleSheet(
-            f"QScrollArea {{ border: 2px solid {UI_COLORS['teal']}; "
-            f"border-radius: {UI_SIZES['btn_radius']}px; background-color: #E0FFFF; }}"
+    def _build_ui(self) -> None:
+        layout = QFormLayout()
+        layout.setSpacing(12)
+
+        self.mode_box = QSpinBox()
+        self.mode_box.setRange(3, 30)
+        self.mode_box.setValue(int(self.engine.settings.get("max_missing", 10) or 10))
+        self.mode_box.setFont(QFont(UI_FONT_FAMILY, 12))
+        self.mode_box.setStyleSheet(
+            f"padding: 6px; border: 1px solid {UI_COLORS['border_light']}; "
+            f"border-radius: {UI_SIZES['btn_radius']}px;"
         )
-        scroll_content = QWidget()
-        scroll_layout = QVBoxLayout(scroll_content)
+        layout.addRow("最大丢失帧数:", self.mode_box)
 
-        # 复选框
-        self.trajectory_checkbox = self._make_checkbox("显示轨迹线", settings["show_trajectory"], self._on_trajectory_toggle)
-        scroll_layout.addWidget(self.trajectory_checkbox)
-        self.prediction_checkbox = self._make_checkbox("显示预测方向", settings["show_prediction"], self._on_prediction_toggle)
-        scroll_layout.addWidget(self.prediction_checkbox)
-        self.tracker_mode_checkbox = self._make_checkbox("使用增强匹配模式", settings["tracker_mode"] == "bytetrack", self._on_tracker_mode_toggle)
-        scroll_layout.addWidget(self.tracker_mode_checkbox)
+        self.iou_slider = QSlider(Qt.Horizontal)
+        self.iou_slider.setRange(10, 50)
+        self.iou_slider.setValue(int(float(self.engine.settings.get("iou_threshold", 0.25) or 0.25) * 100))
+        self.iou_label = QLabel(f"{self.iou_slider.value() / 100:.2f}")
+        self.iou_label.setFont(QFont(UI_FONT_FAMILY, 11))
+        self.iou_label.setStyleSheet(f"color: {UI_COLORS['body_text']};")
+        self.iou_slider.valueChanged.connect(lambda v: self.iou_label.setText(f"{v / 100:.2f}"))
+        layout.addRow("追踪 IoU 阈值:", self.iou_slider)
+        layout.addRow("", self.iou_label)
 
-        # 轨迹颜色
-        traj_group = self._make_color_group(
-            "轨迹线颜色",
-            [("红色", (0, 0, 255)), ("蓝色", (255, 0, 0)), ("绿色", (0, 255, 0)),
-             ("黄色", (0, 255, 255)), ("紫色", (128, 0, 128)), ("白色", (255, 255, 255))],
-            self._set_trajectory_color,
-            tuple(settings["trajectory_color"]),
-            "trajectory_color",
+        self.conf_slider = QSlider(Qt.Horizontal)
+        self.conf_slider.setRange(10, 90)
+        self.conf_slider.setValue(int(float(self.engine.settings.get("conf_threshold", 0.5) or 0.5) * 100))
+        self.conf_label = QLabel(f"{self.conf_slider.value() / 100:.2f}")
+        self.conf_label.setFont(QFont(UI_FONT_FAMILY, 11))
+        self.conf_label.setStyleSheet(f"color: {UI_COLORS['body_text']};")
+        self.conf_slider.valueChanged.connect(lambda v: self.conf_label.setText(f"{v / 100:.2f}"))
+        layout.addRow("检测置信度:", self.conf_slider)
+        layout.addRow("", self.conf_label)
+
+        self.content_layout.addLayout(layout)
+
+        btn_layout = QHBoxLayout()
+        btn_layout.setSpacing(10)
+        btn_layout.addStretch(1)
+
+        ok_btn = QPushButton("保存")
+        ok_btn.setFont(QFont(UI_FONT_FAMILY, 12))
+        ok_btn.setMinimumWidth(100)
+        ok_btn.setStyleSheet(
+            f"background-color: {UI_COLORS['primary']}; color: white; "
+            f"border-radius: {UI_SIZES['btn_radius']}px; padding: 8px;"
         )
-        scroll_layout.addWidget(traj_group)
+        ok_btn.clicked.connect(self._save)
+        btn_layout.addWidget(ok_btn)
 
-        # 预测颜色
-        pred_group = self._make_color_group(
-            "预测方向颜色",
-            [("黄色", (0, 255, 255)), ("红色", (0, 0, 255)), ("蓝色", (255, 0, 0)),
-             ("绿色", (0, 255, 0)), ("紫色", (128, 0, 128)), ("白色", (255, 255, 255))],
-            self._set_prediction_color,
-            tuple(settings["prediction_color"]),
-            "prediction_color",
+        cancel_btn = QPushButton("取消")
+        cancel_btn.setFont(QFont(UI_FONT_FAMILY, 12))
+        cancel_btn.setMinimumWidth(100)
+        cancel_btn.setStyleSheet(
+            f"background-color: {UI_COLORS['border_light']}; color: {UI_COLORS['body_text']}; "
+            f"border-radius: {UI_SIZES['btn_radius']}px; padding: 8px;"
         )
-        scroll_layout.addWidget(pred_group)
+        cancel_btn.clicked.connect(self.reject)
+        btn_layout.addWidget(cancel_btn)
 
-        scroll_layout.addStretch()
-        scroll.setWidget(scroll_content)
-        self._root_layout.addWidget(scroll)
+        self.content_layout.addLayout(btn_layout)
 
-        tip = self._make_label("提示：点击颜色按钮后立即生效，无需保存", 10, UI_COLORS["info_text"], align=Qt.AlignCenter)
-        self._root_layout.addWidget(tip)
-
-        self._finish_layout()
-
-    @staticmethod
-    def _make_checkbox(text: str, checked: bool, callback: Callable) -> QCheckBox:
-        cb = QCheckBox(text)
-        cb.setFont(QFont(UI_FONT_FAMILY, 14))
-        cb.setStyleSheet("padding: 15px;")
-        cb.setChecked(checked)
-        cb.stateChanged.connect(callback)
-        return cb
-
-    def _make_color_group(
-        self,
-        title: str,
-        colors: List[Tuple[str, Tuple[int, int, int]]],
-        on_preset: Callable,
-        current_color: Tuple[int, int, int],
-        setting_key: str,
-    ) -> QGroupBox:
-        group = QGroupBox(title)
-        group.setFont(QFont(UI_FONT_FAMILY, 12, QFont.Bold))
-        group.setStyleSheet("margin: 10px; padding: 15px;")
-        layout = QVBoxLayout(group)
-
-        preset_row = QHBoxLayout()
-        preset_row.setSpacing(10)
-        for name, color in colors:
-            btn = QPushButton(name)
-            btn.setFixedSize(70, 40)
-            btn.setFont(QFont(UI_FONT_FAMILY, UI_SIZES["small_font"]))
-            text_color = "black" if sum(color) > 380 else "white"
-            btn.setStyleSheet(
-                f"background-color: rgb({color[2]}, {color[1]}, {color[0]}); "
-                f"color: {text_color}; border-radius: 5px; border: 2px solid #ccc;"
-            )
-            btn.clicked.connect(lambda checked, c=color: on_preset(c))
-            preset_row.addWidget(btn)
-        layout.addLayout(preset_row)
-
-        custom_row = QHBoxLayout()
-        custom_row.addWidget(self._make_label("自定义颜色:", UI_SIZES["small_font"]))
-        custom_btn = QPushButton()
-        custom_btn.setFixedSize(40, 40)
-        self._update_custom_button(custom_btn, current_color)
-        custom_row.addWidget(custom_btn)
-        custom_row.addStretch(1)
-        layout.addLayout(custom_row)
-
-        # 保存引用供颜色选择器使用
-        if setting_key == "trajectory_color":
-            self.custom_trajectory_button = custom_btn
-            self._choose_trajectory_color = lambda: self._choose_color("选择轨迹线颜色", setting_key, custom_btn)
-            custom_btn.clicked.connect(self._choose_trajectory_color)
-        else:
-            self.custom_prediction_button = custom_btn
-            self._choose_prediction_color = lambda: self._choose_color("选择预测方向颜色", setting_key, custom_btn)
-            custom_btn.clicked.connect(self._choose_prediction_color)
-
-        return group
-
-    @staticmethod
-    def _update_custom_button(button: QPushButton, color: Tuple[int, int, int]) -> None:
-        r, g, b = (int(color[0]), int(color[1]), int(color[2])) if len(color) == 3 else (0, 0, 0)
-        button.setStyleSheet(
-            f"background-color: rgb({r}, {g}, {b}); "
-            f"border-radius: 5px; border: 2px solid {UI_COLORS['teal']};"
-        )
-
-    def _on_trajectory_toggle(self, state: int) -> None:
-        self.engine.set_setting("show_trajectory", state == Qt.Checked)
-
-    def _on_prediction_toggle(self, state: int) -> None:
-        self.engine.set_setting("show_prediction", state == Qt.Checked)
-
-    def _on_tracker_mode_toggle(self, state: int) -> None:
-        self.engine.set_setting("tracker_mode", "bytetrack" if state == Qt.Checked else "classic")
-
-    def _set_trajectory_color(self, color: Tuple[int, int, int]) -> None:
-        self.engine.set_setting("trajectory_color", color)
-        self._update_custom_button(self.custom_trajectory_button, color)
-
-    def _set_prediction_color(self, color: Tuple[int, int, int]) -> None:
-        self.engine.set_setting("prediction_color", color)
-        self._update_custom_button(self.custom_prediction_button, color)
-
-    def _choose_color(self, dialog_title: str, setting_key: str, button: QPushButton) -> None:
-        try:
-            settings = self.engine.get_settings()
-            r, g, b = settings[setting_key]
-            qcolor = QColor(r, g, b)
-            color = QColorDialog.getColor(qcolor, self, dialog_title)
-            if color.isValid():
-                new_color = (color.red(), color.green(), color.blue())
-                if "trajectory" in setting_key:
-                    self._set_trajectory_color(new_color)
-                else:
-                    self._set_prediction_color(new_color)
-        except Exception as exc:
-            logger.error("选择颜色错误: %s", exc)
+    def _save(self) -> None:
+        self.engine.set_setting("max_missing", int(self.mode_box.value()))
+        self.engine.set_setting("iou_threshold", self.iou_slider.value() / 100)
+        self.engine.set_setting("conf_threshold", self.conf_slider.value() / 100)
+        self.accept()
 
 
 class ModelManageDialog(BaseDialog):
-    """模型管理对话框"""
-
-    HEADER_BG = UI_COLORS["teal"]
-    CLOSE_BG = UI_COLORS["teal_light"]
-
-    def __init__(self, engine: DetectionEngine, parent: Optional[QWidget] = None) -> None:
-        super().__init__("模型管理", 620, 360, parent)
+    def __init__(self, engine: Any, parent: Optional[QWidget] = None) -> None:
+        super().__init__(parent)
         self.engine = engine
+        self._setup_dialog("模型管理", 520, 360)
+        self._build_ui()
 
-        info = self._make_label("选择模型后可直接下载，也可删除当前模型后重载其他模型。", 12, align=Qt.AlignCenter)
-        info.setWordWrap(True)
-        self._root_layout.addWidget(info)
+    def _build_ui(self) -> None:
+        info_label = QLabel(f"当前模型：{getattr(self.engine, 'model_name', '未知')}")
+        info_label.setFont(QFont(UI_FONT_FAMILY, 11))
+        info_label.setStyleSheet(f"color: {UI_COLORS['body_text']};")
+        self.content_layout.addWidget(info_label)
 
-        select_layout = QHBoxLayout()
-        select_layout.addWidget(self._make_label("选择模型："))
-        self.model_combo = QComboBox()
-        self.model_combo.setFont(QFont(UI_FONT_FAMILY, 12))
-        self.model_combo.setMinimumWidth(340)
-        for url in MODEL_LIST:
-            from core.utils import _model_name_from_url
-            self.model_combo.addItem(_model_name_from_url(url), url)
-        current_url = self.engine.settings.get("model_url", "")
-        idx = self.model_combo.findData(current_url)
-        if idx >= 0:
-            self.model_combo.setCurrentIndex(idx)
-        select_layout.addWidget(self.model_combo)
-        self._root_layout.addLayout(select_layout)
+        path_layout = QHBoxLayout()
+        self.path_edit = QLineEdit(self.engine.model_path or "")
+        self.path_edit.setFont(QFont(UI_FONT_FAMILY, 11))
+        self.path_edit.setReadOnly(True)
+        self.path_edit.setStyleSheet(
+            f"padding: 6px; border: 1px solid {UI_COLORS['border_light']}; "
+            f"border-radius: {UI_SIZES['btn_radius']}px;"
+        )
+        path_layout.addWidget(self.path_edit, 1)
 
-        self.status_label = QLabel("")
-        self.status_label.setFont(QFont(UI_FONT_FAMILY, UI_SIZES["small_font"]))
-        self.status_label.setStyleSheet(f"color: {UI_COLORS['info_text']}; padding: 0 15px 15px 15px;")
-        self.status_label.setWordWrap(True)
-        self._root_layout.addWidget(self.status_label)
+        browse_btn = QPushButton("浏览")
+        browse_btn.setFont(QFont(UI_FONT_FAMILY, 11))
+        browse_btn.setStyleSheet(
+            f"background-color: {UI_COLORS['secondary']}; color: white; "
+            f"border-radius: {UI_SIZES['btn_radius']}px; padding: 6px 12px;"
+        )
+        browse_btn.clicked.connect(self._browse_model)
+        path_layout.addWidget(browse_btn)
+        self.content_layout.addLayout(path_layout)
 
         btn_layout = QHBoxLayout()
-        btn_layout.setContentsMargins(15, 0, 15, 15)
-        btn_layout.setSpacing(12)
-        btn_layout.addWidget(self._make_button("删除旧模型", UI_COLORS["primary"]))
-        btn_layout[-1].clicked.connect(self._delete_model)  # type: ignore[index]
-        btn_layout.addWidget(self._make_button("下载模型", UI_COLORS["secondary"]))
-        btn_layout[-1].clicked.connect(self._download_model)  # type: ignore[index]
-        btn_layout.addWidget(self._make_button("重载模型", UI_COLORS["accent"]))
-        btn_layout[-1].clicked.connect(self._reload_model)  # type: ignore[index]
-        self._root_layout.addLayout(btn_layout)
+        btn_layout.setSpacing(10)
+        btn_layout.addStretch(1)
 
-        self._finish_layout()
-        self._update_status()
+        ok_btn = QPushButton("加载")
+        ok_btn.setFont(QFont(UI_FONT_FAMILY, 12))
+        ok_btn.setMinimumWidth(100)
+        ok_btn.setStyleSheet(
+            f"background-color: {UI_COLORS['primary']}; color: white; "
+            f"border-radius: {UI_SIZES['btn_radius']}px; padding: 8px;"
+        )
+        ok_btn.clicked.connect(self._load_model)
+        btn_layout.addWidget(ok_btn)
 
-    def _update_status(self) -> None:
-        path = self.engine.get_model_path()
-        exists = os.path.exists(path)
-        text = f"模型路径：{path}\n状态：{'存在' if exists else '未找到'}"
-        if exists:
-            try:
-                size_mb = os.path.getsize(path) / 1024 / 1024
-                text += f"，大小：{size_mb:.2f} MB"
-            except OSError:
-                pass
-        self.status_label.setText(text)
+        cancel_btn = QPushButton("关闭")
+        cancel_btn.setFont(QFont(UI_FONT_FAMILY, 12))
+        cancel_btn.setMinimumWidth(100)
+        cancel_btn.setStyleSheet(
+            f"background-color: {UI_COLORS['border_light']}; color: {UI_COLORS['body_text']}; "
+            f"border-radius: {UI_SIZES['btn_radius']}px; padding: 8px;"
+        )
+        cancel_btn.clicked.connect(self.reject)
+        btn_layout.addWidget(cancel_btn)
 
-    def _delete_model(self) -> None:
-        path = self.engine.get_model_path()
-        if os.path.exists(path):
-            try:
-                os.remove(path)
-                QMessageBox.information(self, "成功", "已删除旧模型文件。")
-                self._update_status()
-            except OSError as exc:
-                QMessageBox.critical(self, "错误", f"删除失败：{exc}")
-        else:
-            QMessageBox.information(self, "提示", "当前没有可删除的模型文件。")
+        self.content_layout.addLayout(btn_layout)
 
-    def _download_model(self) -> None:
-        QApplication.setOverrideCursor(Qt.WaitCursor)
+    def _browse_model(self) -> None:
+        path, _ = QFileDialog.getOpenFileName(self, "选择模型文件", "", "YOLO 模型 (*.pt *.onnx)")
+        if path:
+            self.path_edit.setText(path)
+
+    def _load_model(self) -> None:
+        path = self.path_edit.text().strip()
+        if not path:
+            QMessageBox.warning(self, "提示", "请先选择模型文件")
+            return
         try:
-            url = self.model_combo.currentData()
-            path = self.engine.download_model(url)
-            if path:
-                QMessageBox.information(self, "成功", f"模型已下载：{path}")
-                self._update_status()
-            else:
-                QMessageBox.warning(self, "失败", "模型下载失败，未保存文件。")
+            self.engine.load_model(path)
+            self.engine.model_path = path
+            QMessageBox.information(self, "成功", "模型加载成功")
+            self.accept()
         except Exception as exc:
-            QMessageBox.critical(self, "错误", f"下载异常：{exc}")
-        finally:
-            QApplication.restoreOverrideCursor()
-
-    def _reload_model(self) -> None:
-        QApplication.setOverrideCursor(Qt.WaitCursor)
-        try:
-            ok = self.engine.reload_model()
-            if ok:
-                QMessageBox.information(self, "成功", "模型已重载。")
-            else:
-                QMessageBox.warning(self, "失败", "模型重载失败。")
-        except Exception as exc:
-            QMessageBox.critical(self, "错误", f"重载异常：{exc}")
-        finally:
-            QApplication.restoreOverrideCursor()
+            QMessageBox.critical(self, "失败", f"模型加载失败：{exc}")
 
 
 class LogExportDialog(BaseDialog):
-    """日志导出对话框"""
-
-    HEADER_BG = UI_COLORS["teal"]
-    CLOSE_BG = UI_COLORS["teal_light"]
-
-    def __init__(self, engine: DetectionEngine, parent: Optional[QWidget] = None) -> None:
-        super().__init__("日志导出", 520, 260, parent)
+    def __init__(self, engine: Any, parent: Optional[QWidget] = None) -> None:
+        super().__init__(parent)
         self.engine = engine
-        self.exporting: bool = False
+        self._setup_dialog("日志导出", 520, 380)
+        self._build_ui()
 
-        self.path_label = QLabel()
-        self.path_label.setFont(QFont(UI_FONT_FAMILY, UI_SIZES["small_font"]))
-        self.path_label.setStyleSheet(f"color: {UI_COLORS['body_text']}; padding: 15px;")
-        self.path_label.setWordWrap(True)
-        self._root_layout.addWidget(self.path_label)
+    def _build_ui(self) -> None:
+        desc = QLabel("导出当前检测日志到 CSV 文件：")
+        desc.setFont(QFont(UI_FONT_FAMILY, 11))
+        desc.setStyleSheet(f"color: {UI_COLORS['body_text']};")
+        self.content_layout.addWidget(desc)
 
-        self.status_label = QLabel("状态：未开始")
-        self.status_label.setFont(QFont(UI_FONT_FAMILY, UI_SIZES["small_font"]))
-        self.status_label.setStyleSheet(f"color: {UI_COLORS['info_text']}; padding: 0 15px 15px 15px;")
-        self._root_layout.addWidget(self.status_label)
+        logs_dir = get_logs_dir(self.engine.base_path)
+        files = []
+        if os.path.isdir(logs_dir):
+            files = [
+                f for f in os.listdir(logs_dir) if f.endswith(".csv") or f.endswith(".json")
+            ]
+
+        if not files:
+            tip = QLabel("暂无日志文件")
+            tip.setFont(QFont(UI_FONT_FAMILY, 11))
+            tip.setStyleSheet(f"color: {UI_COLORS['label_text']};")
+            self.content_layout.addWidget(tip)
+        else:
+            self.file_list = QListWidget()
+            self.file_list.setFont(QFont(UI_FONT_FAMILY, 11))
+            self.file_list.setStyleSheet(
+                f"border: 1px solid {UI_COLORS['border_light']}; "
+                f"border-radius: {UI_SIZES['btn_radius']}px; padding: 6px;"
+            )
+            for name in sorted(files)[-20:]:
+                self.file_list.addItem(name)
+            self.content_layout.addWidget(self.file_list)
 
         btn_layout = QHBoxLayout()
-        btn_layout.setContentsMargins(15, 0, 15, 15)
-        btn_layout.setSpacing(12)
+        btn_layout.setSpacing(10)
+        btn_layout.addStretch(1)
 
-        self.start_button = self._make_button("开始导出", UI_COLORS["primary"])
-        self.start_button.clicked.connect(self._start_export)
-        btn_layout.addWidget(self.start_button)
+        export_btn = QPushButton("导出")
+        export_btn.setFont(QFont(UI_FONT_FAMILY, 12))
+        export_btn.setMinimumWidth(100)
+        export_btn.setStyleSheet(
+            f"background-color: {UI_COLORS['primary']}; color: white; "
+            f"border-radius: {UI_SIZES['btn_radius']}px; padding: 8px;"
+        )
+        export_btn.clicked.connect(self._export)
+        btn_layout.addWidget(export_btn)
 
-        self.stop_button = self._make_button("停止导出", UI_COLORS["secondary"])
-        self.stop_button.clicked.connect(self._stop_export)
-        self.stop_button.setEnabled(False)
-        btn_layout.addWidget(self.stop_button)
+        close_btn = QPushButton("关闭")
+        close_btn.setFont(QFont(UI_FONT_FAMILY, 12))
+        close_btn.setMinimumWidth(100)
+        close_btn.setStyleSheet(
+            f"background-color: {UI_COLORS['border_light']}; color: {UI_COLORS['body_text']}; "
+            f"border-radius: {UI_SIZES['btn_radius']}px; padding: 8px;"
+        )
+        close_btn.clicked.connect(self.reject)
+        btn_layout.addWidget(close_btn)
 
-        open_btn = self._make_button("打开日志目录", UI_COLORS["accent"])
-        open_btn.clicked.connect(self._open_logs_dir)
-        btn_layout.addWidget(open_btn)
+        self.content_layout.addLayout(btn_layout)
 
-        self._root_layout.addLayout(btn_layout)
-        self._finish_layout()
-
-        # 初始化日志路径
-        log_path = self.engine.log_path or self.engine.start_log_export()
-        self.path_label.setText(f"日志文件：{log_path}")
-
-    def _start_export(self) -> None:
-        self.exporting = True
-        log_path = self.engine.start_log_export()
-        self.path_label.setText(f"日志文件：{log_path}")
-        self.start_button.setEnabled(False)
-        self.stop_button.setEnabled(True)
-        self.status_label.setText("状态：导出中...")
-
-    def _stop_export(self) -> None:
-        self.exporting = False
-        self.engine.stop_log_export()
-        self.start_button.setEnabled(True)
-        self.stop_button.setEnabled(False)
-        self.status_label.setText("状态：已暂停")
-
-    def _open_logs_dir(self) -> None:
+    def _export(self) -> None:
+        path, _ = QFileDialog.getSaveFileName(
+            self, "导出日志", os.path.join(get_logs_dir(self.engine.base_path), "export.csv"), "CSV (*.csv)"
+        )
+        if not path:
+            return
         try:
-            path = get_logs_dir(self.engine.base_path)
-            if sys.platform == "win32":
-                os.startfile(path)
+            import shutil
+            src = os.path.join(get_logs_dir(self.engine.base_path), "log.csv")
+            if os.path.exists(src):
+                shutil.copy2(src, path)
+                QMessageBox.information(self, "成功", f"已导出到：{path}")
             else:
-                QMessageBox.information(self, "路径", path)
+                QMessageBox.warning(self, "提示", "当前没有可导出的日志")
         except Exception as exc:
-            QMessageBox.warning(self, "失败", str(exc))
+            QMessageBox.critical(self, "失败", f"导出失败：{exc}")

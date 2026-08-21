@@ -4,32 +4,26 @@ from collections import defaultdict
 from typing import Any, Callable, Dict, Optional, Tuple
 
 from PyQt5.QtCore import QEvent, QObject, QThread, Qt, pyqtSignal
-from PyQt5.QtGui import QFont, QImage
-from PyQt5.QtWidgets import (
-    QCheckBox,
-    QGridLayout,
-    QHBoxLayout,
-    QLabel,
-    QMainWindow,
-    QMessageBox,
-    QPushButton,
-    QScrollArea,
-    QVBoxLayout,
-    QWidget,
-)
+ from PyQt5.QtGui import QFont, QImage
+ from PyQt5.QtWidgets import (
+  QCheckBox, QGridLayout, QHBoxLayout, QLabel,
+  QMainWindow, QMessageBox, QPushButton, QScrollArea,
+  QSlider, QVBoxLayout, QWidget,
+ )
 
 import cv2
 import numpy as np
 
 from core.config import UI_COLORS, UI_FONT_FAMILY, UI_SIZES
-from core.detector import DetectionEngine
-from ui.dialogs import (
-    CameraSelectDialog,
-    DisableClassDialog,
-    LogExportDialog,
-    ModelManageDialog,
-    TrackSettingsDialog,
-)
+ from core.detector import DetectionEngine
+ from core.utils import ensure_dir, get_logs_dir
+ from ui.dialogs import (
+  CameraSelectDialog,
+  DisableClassDialog,
+  LogExportDialog,
+  ModelManageDialog,
+  TrackSettingsDialog,
+ )
 
 
 class VideoThread(QThread):
@@ -369,11 +363,11 @@ class MainWindow(QMainWindow):
             pass
 
         class_counts = stats.get("类别统计", {}) if isinstance(stats, dict) else {}
-        if isinstance(class_counts, dict):
-            self.class_counts = defaultdict(int, {k: int(v) for k, v in class_counts.items()})
-            self.total_detections += int(stats.get("目标总数", 0))
-            self.total_label.setText(f"总检测数：{self.total_detections}")
-            self._update_stats_grid(stats)
+ if isinstance(class_counts, dict):
+  self.class_counts = defaultdict(int, {k: int(v) for k, v in class_counts.items()})
+ self.total_detections = int(stats.get("目标总数", 0))
+ self.total_label.setText(f"总检测数：{self.total_detections}")
+ self._update_stats_grid(stats)
 
     def _switch_camera(self) -> None:
         self._stop_detection()

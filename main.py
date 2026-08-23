@@ -3,7 +3,13 @@ import os
 import sys
 from core.detector import DetectionEngine
 from core.utils import load_settings, logger, resolve_base_path, save_settings
-
+"""
+呃虽然但是我也不知道我在写是什么可能是在凑字数吧，因为神秘的ex也写了所以我也要写
+呃呃呃呃我也不知道我写什么呃不管了exrfy就是男娘和猫娘好吧😋
+饿啊我要验牌😡
+😡可恶的群友给我做成鱼罐头干什么😡
+直接炖了😡
+"""
 
 def _configure_qt_platform_plugins() -> None:
     try:

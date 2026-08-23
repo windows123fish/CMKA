@@ -134,6 +134,17 @@ def save_log_row(file_path: str, **row_kwargs: Any) -> bool:
         return False
 
 
+def get_available_cameras(max_index: int = 10) -> List[int]:
+    """Scan for available cameras up to max_index and return their IDs."""
+    available: List[int] = []
+    for idx in range(max_index + 1):
+        cap = cv2.VideoCapture(idx, cv2.CAP_DSHOW)
+        if cap.isOpened():
+            available.append(idx)
+            cap.release()
+    return available
+
+
 def build_log_path(base_path: str) -> str:
     """根据时间戳生成日志文件路径。"""
     safe_base = re.sub(r"[^0-9A-Za-z_-]+", "_", os.path.basename(base_path)).strip("_") or "app"

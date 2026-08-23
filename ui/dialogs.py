@@ -1,10 +1,11 @@
 import os
-from typing import Any, Dict, Optional, Tuple
+from typing import Any, Dict, List, Optional, Tuple
 
 from PyQt5.QtCore import Qt
 from PyQt5.QtGui import QColor, QFont
 from PyQt5.QtWidgets import (
     QCheckBox,
+    QComboBox,
     QDialog,
     QFileDialog,
     QFormLayout,
@@ -106,22 +107,30 @@ class CameraSelectDialog(BaseDialog):
     def __init__(self, parent: Optional[QWidget] = None, current_camera: int = 0) -> None:
         super().__init__(parent)
         self.selected_camera = current_camera
-        self._setup_dialog("选择摄像头", 350, 200)
+        self._setup_dialog("选择摄像头", 360, 220)
         self._build_ui()
 
     def _build_ui(self) -> None:
         layout = QFormLayout()
         layout.setSpacing(12)
 
-        self.camera_spin = QSpinBox()
-        self.camera_spin.setRange(0, 10)
-        self.camera_spin.setValue(self.selected_camera)
-        self.camera_spin.setFont(QFont(UI_FONT_FAMILY, 12))
-        self.camera_spin.setStyleSheet(
+        self.camera_box = QComboBox()
+        self.camera_box.setFont(QFont(UI_FONT_FAMILY, 12))
+        self.camera_box.setStyleSheet(
             f"padding: 6px; border: 1px solid {UI_COLORS['border_light']}; "
             f"border-radius: {UI_SIZES['btn_radius']}px;"
         )
-        layout.addRow("摄像头 ID:", self.camera_spin)
+        available_cameras = self._scan_available_cameras()
+        if available_cameras:
+            for cam_id in available_cameras:
+                self.camera_box.addItem(f"摄像头 {cam_id}", cam_id)
+            default_index = self.camera_box.findData(self.selected_camera)
+            if default_index >= 0:
+                self.camera_box.setCurrentIndex(default_index)
+        else:
+            self.camera_box.addItem("未检测到可用摄像头", -1)
+            self.camera_box.setEnabled(False)
+        layout.addRow("可用摄像头:", self.camera_box)
 
         self.content_layout.addLayout(layout)
 
@@ -151,8 +160,23 @@ class CameraSelectDialog(BaseDialog):
 
         self.content_layout.addLayout(btn_layout)
 
+    def _scan_available_cameras(self) -> List[int]:
+        try:
+            import cv2
+            available: List[int] = []
+            for idx in range(10):
+                cap = cv2.VideoCapture(idx, cv2.CAP_DSHOW)
+                if cap.isOpened():
+                    available.append(idx)
+                    cap.release()
+            return available
+        except Exception as exc:
+            logger.error("扫描摄像头失败: %s", exc)
+            return []
+
     def _on_ok(self) -> None:
-        self.selected_camera = self.camera_spin.value()
+        data = self.camera_box.currentData()
+        self.selected_camera = int(data) if isinstance(data, int) else 0
         self.accept()
 
 

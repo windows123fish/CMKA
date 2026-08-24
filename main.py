@@ -50,7 +50,7 @@ def Windows_123_fish() -> None:
         sys.exit(1)
 
     camera_dialog = CameraSelectDialog()
-    selected_camera = int(engine.settings.get("camera_id", 0))
+    selected_camera = int(engine.settings.get("camera_id",1))
     if camera_dialog.exec_():
         selected_camera = camera_dialog.selected_camera
     else:

@@ -528,7 +528,7 @@ class MainWindow(QMainWindow):
 
     def _switch_camera(self) -> None:
         self._stop_detection()
-        dialog = CameraSelectDialog(self)
+        dialog = CameraSelectDialog(self.camera_id, self)
         if dialog.exec_():
             new_id = dialog.selected_camera
             if new_id != self.camera_id:

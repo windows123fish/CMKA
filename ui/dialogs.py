@@ -107,7 +107,7 @@ class CameraSelectDialog(BaseDialog):
     def __init__(self, parent: Optional[QWidget] = None, current_camera: int = 0) -> None:
         super().__init__(parent)
         self.selected_camera = current_camera
-        self._setup_dialog("选择摄像头", 420, 300)
+        self._setup_dialog("选择摄像头", 430, 240)
         self._build_ui()
 
     def _build_ui(self) -> None:
@@ -128,26 +128,11 @@ class CameraSelectDialog(BaseDialog):
             if default_index >= 0:
                 self.camera_box.setCurrentIndex(default_index)
         else:
-            self.camera_box.addItem("未检测到可用摄像头（请手动输入）", -1)
+            self.camera_box.addItem("未检测到可用摄像头", -1)
             self.camera_box.setEnabled(False)
         layout.addRow("可用摄像头:", self.camera_box)
 
-        self.manual_spin = QSpinBox()
-        self.manual_spin.setRange(0, 20)
-        self.manual_spin.setValue(self.selected_camera)
-        self.manual_spin.setFont(QFont(UI_FONT_FAMILY, 12))
-        self.manual_spin.setStyleSheet(
-            f"padding: 6px; border: 1px solid {UI_COLORS['border_light']}; "
-            f"border-radius: {UI_SIZES['btn_radius']}px;"
-        )
-        layout.addRow("手动输入 ID:", self.manual_spin)
-
         self.content_layout.addLayout(layout)
-
-        hint = QLabel("如自动扫描为空，可直接输入摄像头 ID 后点击确定。")
-        hint.setFont(QFont(UI_FONT_FAMILY, 10))
-        hint.setStyleSheet(f"color: {UI_COLORS['label_text']};")
-        self.content_layout.addWidget(hint)
 
         btn_layout = QHBoxLayout()
         btn_layout.setSpacing(10)
@@ -190,7 +175,9 @@ class CameraSelectDialog(BaseDialog):
             return []
 
     def _on_ok(self) -> None:
-        self.selected_camera = int(self.manual_spin.value())
+        cam_data = self.camera_box.currentData()
+        if cam_data is not None and cam_data >= 0:
+            self.selected_camera = int(cam_data)
         self.accept()
 
 

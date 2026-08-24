@@ -128,7 +128,7 @@ class DetectionEngine:
    "max_missing": self.max_missing,
    "iou_threshold": self.iou_threshold,
    "conf_threshold": self.conf_threshold,
-   "camera_id": int(self.settings.get("camera_id", 0)),
+   "camera_id": int(self.settings.get("camera_id", 1)),
    "model_url": self.settings.get("model_url", DEFAULT_CONFIG["model_url"]),
   }
   return save_settings(self.base_path, settings)

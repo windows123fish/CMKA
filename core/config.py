@@ -25,7 +25,7 @@ COCO_CLASSES: Dict[int, str] = {
 
 # 默认配置
 DEFAULT_CONFIG: Dict[str, Any] = {
-    "camera_id": 0,
+    "camera_id": 1,
     "disabled_classes": [],
     "show_trajectory": True,
     "show_prediction": True,

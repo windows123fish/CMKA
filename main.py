@@ -31,7 +31,6 @@ def _configure_qt_platform_plugins() -> None:
     except ImportError:
         pass
 
-
 def Windows_123_fish() -> None:
     from PyQt5.QtWidgets import QApplication, QMessageBox
 

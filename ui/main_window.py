@@ -91,10 +91,10 @@ class MainWindow(QMainWindow):
         left_layout.addWidget(self._build_title_bar())
         left_layout.addWidget(self._build_content())
 
-        right_widget = self._build_stats_panel()
+        self.stats_panel = self._build_stats_panel()
 
         main_layout.addWidget(left_widget, 4)
-        main_layout.addWidget(right_widget, 1)
+        main_layout.addWidget(self.stats_panel, 1)
 
     def _build_title_bar(self) -> QWidget:
         bar = QWidget()
@@ -247,10 +247,10 @@ class MainWindow(QMainWindow):
         left_layout.addWidget(self._build_title_bar())
         left_layout.addWidget(self._build_content())
 
-        right_widget = self._build_stats_panel()
+        self.stats_panel = self._build_stats_panel()
 
         main_layout.addWidget(left_widget, 4)
-        main_layout.addWidget(right_widget, 1)
+        main_layout.addWidget(self.stats_panel, 1)
 
     def _build_title_bar(self) -> QWidget:
         bar = QWidget()
@@ -356,6 +356,9 @@ class MainWindow(QMainWindow):
 
         self.save_config_button = self._make_ctrl_btn("保存配置", UI_COLORS["teal"], self._save_current_config)
         layout.addWidget(self.save_config_button)
+
+        self.stats_toggle_button = self._make_ctrl_btn("隐藏统计", UI_COLORS["teal"], self._toggle_stats_panel)
+        layout.addWidget(self.stats_toggle_button)
 
         return layout
 
@@ -478,6 +481,14 @@ class MainWindow(QMainWindow):
         else:
             self.showMaximized()
             self.max_button.setText("▢")
+
+    def _toggle_stats_panel(self) -> None:
+        if self.stats_panel.isVisible():
+            self.stats_panel.hide()
+            self.stats_toggle_button.setText("显示统计")
+        else:
+            self.stats_panel.show()
+            self.stats_toggle_button.setText("隐藏统计")
 
     def _start_detection(self) -> None:
         if self.thread and self.thread.isRunning():

@@ -16,8 +16,9 @@ from core.utils import load_settings, logger, resolve_base_path, save_settings
 不给的😡
 我就😡
 😭😭😭跪下来求你了😭😭😭
+67😋😡😭🤔😰🤩
 """
-
+    
 def _configure_qt_platform_plugins() -> None:
     try:
         import PyQt5
